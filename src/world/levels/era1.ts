@@ -6,8 +6,10 @@ import { composeScreens } from './compose';
  *
  *   [A enemies] [B death] [C lives] [D punch] [E sfx+title] [F boss]
  *
- * Each screen starts with a 1-tile bump on its left edge, so walkers stay on their own
- * screen (they turn at walls). The player just hops over it.
+ * Screens B–D start with a 1-tile bump one tile in from the left edge, so walkers stay on
+ * their own screen (they turn at walls). It's never in the first column: on a flip-screen
+ * you can't see the next screen, so a step right on the edge is an invisible wall. The
+ * player arrives, sees it, and hops over it. (The Block is kept in its arena in code.)
  *
  * - A: ENEMIES. A walker appears, and it's harmless.
  * - B: DEATH. Now the walker and a 2-tile spike pit are deadly.
@@ -41,7 +43,7 @@ const B_DEATH = [
   '................',
   '................',
   '................',
-  '#..2...^^...e...',
+  '.#.2...^^...e...',
   '################',
 ];
 
@@ -54,7 +56,7 @@ const C_LIVES = [
   '.......7........',
   '.....####.......',
   '................',
-  '#..3....e....e..',
+  '.#.3....e....e..',
   '################',
 ];
 
@@ -67,7 +69,7 @@ const D_PUNCH = [
   '......##########',
   '......##########',
   '................',
-  '#.4.......e..e..',
+  '.#.4......e..e..',
   '################',
 ];
 
@@ -93,7 +95,7 @@ const F_BOSS = [
   '...............#',
   '...............#',
   '...............#',
-  '#..........B...#',
+  '...........B...#',
   '################',
 ];
 

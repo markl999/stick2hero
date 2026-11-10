@@ -8,7 +8,8 @@ import {
   SOLID_SCREEN,
 } from '../src/world/levels/compose';
 import { ERA0_LEVEL } from '../src/world/levels/era0';
-import { parseLevel } from '../src/world/tilemap';
+import { ERA_LEVELS } from '../src/world/levels';
+import { parseLevel, Tile } from '../src/world/tilemap';
 
 describe('parseLevel', () => {
   it('parses solids, spawn and pickups', () => {
@@ -72,5 +73,43 @@ describe('Era 0 level', () => {
       const ty = Math.floor(p.y / TILE);
       expect(level.map.isSolid(tx, ty + 1), `${p.feature} has ground below`).toBe(true);
     }
+  });
+});
+
+describe('flip-screen seams', () => {
+  /**
+   * Before SCROLLING you can't see the next screen, so a step in its first column (or the
+   * last column, walking back) is an invisible wall: you walk into the edge and stop. Steps,
+   * hazards and walls belong at least a tile in from a flip-screen edge.
+   */
+  it('never puts a step or a hazard right on a flip-screen edge', () => {
+    const problems: string[] = [];
+    ERA_LEVELS.forEach((def, era) => {
+      const level = parseLevel(def);
+      const { map } = level;
+      // Flip-screen until SCROLLING is collected (Era 2's first screen), and never after.
+      const scroll = level.pickups.find((p) => p.feature === 'SCROLLING');
+      const flipUntil = era <= 1 ? map.width : scroll ? Math.floor(scroll.x / TILE) : 0;
+      for (let seam = SCREEN_COLS; seam <= flipUntil && seam < map.width; seam += SCREEN_COLS) {
+        for (let row = 0; row < map.height - 1; row++) {
+          const where = `era ${era}, seam at column ${seam}, row ${row}`;
+          // Walking right on the floor of the last column, into a wall in the next screen.
+          if (
+            !map.isSolid(seam - 1, row) &&
+            map.isSolid(seam - 1, row + 1) &&
+            map.isSolid(seam, row)
+          )
+            problems.push(`${where}: hidden step to the right`);
+          // And walking back left.
+          if (!map.isSolid(seam, row) && map.isSolid(seam, row + 1) && map.isSolid(seam - 1, row))
+            problems.push(`${where}: hidden step to the left`);
+          for (const col of [seam - 1, seam]) {
+            const tile = map.tileAt(col, row);
+            if (tile === Tile.Spikes || tile === Tile.Hot) problems.push(`${where}: hazard`);
+          }
+        }
+      }
+    });
+    expect(problems).toEqual([]);
   });
 });
