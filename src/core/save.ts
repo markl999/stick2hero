@@ -1,0 +1,57 @@
+import { isFeatureId, type FeatureId } from './features';
+
+const KEY = 'stick2hero.save.v1';
+
+export interface SaveData {
+  version: 1;
+  features: FeatureId[];
+  score: number;
+  introSeen: boolean;
+}
+
+export function defaultSave(): SaveData {
+  return { version: 1, features: [], score: 0, introSeen: false };
+}
+
+function storage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null; // Access can throw in some privacy modes.
+  }
+}
+
+export function loadSave(): SaveData {
+  const store = storage();
+  if (!store) return defaultSave();
+  try {
+    const raw = store.getItem(KEY);
+    if (!raw) return defaultSave();
+    const data = JSON.parse(raw) as Partial<SaveData>;
+    if (data.version !== 1) return defaultSave();
+    return {
+      version: 1,
+      features: Array.isArray(data.features) ? data.features.filter(isFeatureId) : [],
+      score: typeof data.score === 'number' && Number.isFinite(data.score) ? data.score : 0,
+      introSeen: data.introSeen === true,
+    };
+  } catch {
+    return defaultSave();
+  }
+}
+
+export function writeSave(data: SaveData): void {
+  try {
+    storage()?.setItem(KEY, JSON.stringify(data));
+  } catch {
+    // Storage full or blocked: the game keeps running, progress just isn't persisted.
+  }
+}
+
+export function clearSave(): void {
+  try {
+    storage()?.removeItem(KEY);
+  } catch {
+    // Ignore.
+  }
+}
