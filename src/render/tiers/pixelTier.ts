@@ -650,6 +650,30 @@ function drawBlock(f: Frame, boss: BlockBoss): void {
   p.line(left + w - ex - es, ey - 2, left + w - ex + 2, ey - 4);
   const mouthY = top + Math.round(h * 0.72);
   p.hline(left + Math.round(w * 0.3), left + Math.round(w * 0.7), mouthY);
+
+  if (boss.state !== 'waiting' && !boss.defeated) drawBlockHealth(f, boss, left, top, w);
+}
+
+/**
+ * A health bar riding on top of The Block: one segment per punch it has left. While it's
+ * dazed (the moment to punch), the segment you're about to knock off blinks.
+ */
+function drawBlockHealth(f: Frame, boss: BlockBoss, left: number, top: number, w: number): void {
+  const { p, style, s, game } = f;
+  const gap = Math.max(1, Math.round(s));
+  const h = Math.max(2, Math.round(4 * s));
+  // Above the box, but never off the top of the screen at the peak of a hop.
+  const y = Math.max(gap, top - h - Math.round(5 * s));
+  const seg = (w - gap * (BOSS_HP - 1)) / BOSS_HP;
+  for (let i = 0; i < BOSS_HP; i++) {
+    const x0 = Math.round(left + i * (seg + gap));
+    const x1 = Math.round(left + i * (seg + gap) + seg);
+    const blink =
+      boss.state === 'dazed' && i === boss.hp - 1 && Math.floor(game.time * 8) % 2 === 0;
+    p.color(style.enemy);
+    if (i < boss.hp && !blink) p.rect(x0, y, x1 - x0, h);
+    else p.strokeRect(x0, y, x1 - x0, h);
+  }
 }
 
 function drawFlicker(f: Frame, boss: FlickerBoss): void {
