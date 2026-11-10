@@ -225,6 +225,19 @@ function colourLevel(game: Game): 0 | 4 | 16 {
   return 0;
 }
 
+/**
+ * The colour-blind-safe palette: danger in amber rather than red. Red reads as dark (or as
+ * brown, next to the bricks) to most colour-blind players; a bright amber stands out from
+ * the bricks, the blue night and the cyan of COLOUR (4) for all of them. The shapes back it
+ * up anyway (spikes, faces, and the flame marks on hot bricks).
+ */
+const AMBER = '#ffb000';
+function colourBlindSafe(style: PixelStyle): PixelStyle {
+  // Before colour, everything's one ink: nothing to change.
+  if (!style.filled || style.hazard === style.tiles) return style;
+  return { ...style, hazard: AMBER, enemy: AMBER, hot: AMBER, hotMortar: '#5c3a00' };
+}
+
 /** The unlock flash: everything inverts. */
 function inverted(style: PixelStyle): PixelStyle {
   const out = { ...style };
@@ -265,13 +278,15 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   const camY = lerp(cam.prevY, cam.y, alpha);
 
   // JUMP: the screen itself hops.
+  const still = game.comfort.reduceShake || game.comfort.reduceMotion;
   const hop =
-    moment?.feature === 'JUMP' && t >= MOMENT_FLASH && t < 0.6
+    !still && moment?.feature === 'JUMP' && t >= MOMENT_FLASH && t < 0.6
       ? -Math.round(Math.sin((Math.PI * (t - MOMENT_FLASH)) / (0.6 - MOMENT_FLASH)) * 8 * s)
       : 0;
 
   const level = colourLevel(game);
   let style = baseStyle(game, level);
+  if (game.comfort.colourBlind) style = colourBlindSafe(style);
   if (game.flashing) style = inverted(style);
 
   // CAMERA: zoom in around the bottom middle of the screen (so the floor, and the pits in
@@ -349,7 +364,12 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   if (wave && !game.flashing) {
     world(frame(baseStyle(game, level === 16 ? 4 : 0)));
     p.clippedToCircle(wave.x, wave.y, wave.r, () => world(f));
-  } else if (moment?.feature === 'LEFT' && t >= MOMENT_FLASH && t < MOMENT_HITSTOP) {
+  } else if (
+    moment?.feature === 'LEFT' &&
+    t >= MOMENT_FLASH &&
+    t < MOMENT_HITSTOP &&
+    !game.comfort.reduceMotion
+  ) {
     // ← LEFT: the world briefly turns around.
     p.mirrored(() => world(f));
   } else {
@@ -474,6 +494,9 @@ function drawTiles(f: Frame): void {
         p.hline(left, right, bottom);
         p.vline(Math.round((left + right) / 2), top, mid);
         p.vline(right, mid, bottom);
+        // Hot bricks get a flame mark once there's colour, so it's never colour alone.
+        // (Before colour they're deliberately identical to normal bricks.)
+        if (hot && style.hot !== style.tiles) drawFlameMark(f, left, top, right, mid);
         if (style.bevel && !hot) {
           // Stone blocks catch the light on top and left.
           p.color(style.bevel.light);
@@ -496,6 +519,20 @@ function drawTiles(f: Frame): void {
       if (!map.isSolidForDraw(tx - 1, ty)) p.vline(left, top, bottom);
       if (!map.isSolidForDraw(tx + 1, ty)) p.vline(right, top, bottom);
     }
+  }
+}
+
+/** A little flame in the top course of a hot brick, in the mortar colour. */
+function drawFlameMark(f: Frame, left: number, top: number, right: number, mid: number): void {
+  const { p, style } = f;
+  const cx = Math.round((left + right) / 2);
+  const h = mid - top;
+  const w = Math.max(1, Math.round((right - left) * 0.12));
+  p.color(style.hotMortar);
+  for (const dx of [-0.25, 0.25]) {
+    const x = Math.round(cx + dx * (right - left));
+    p.line(x - w, mid - 1, x, top + Math.round(h * 0.25));
+    p.line(x, top + Math.round(h * 0.25), x + w, mid - 1);
   }
 }
 

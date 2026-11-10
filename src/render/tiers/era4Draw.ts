@@ -356,7 +356,7 @@ export function drawCutsceneOverlay(f: Frame): void {
     const lines = wrap(shown, Math.floor((p.width - 12 * ts) / ts));
     lines.slice(0, 2).forEach((l, i) => p.text(l, x, top + (GLYPH_H + 3) * ts * (i + 1), ts));
   }
-  if (scene?.phase === 'delete') {
+  if (scene?.phase === 'delete' && !game.comfort.reduceFlashing) {
     // Static tears across the screen.
     for (let i = 0; i < 40; i++) {
       p.color(Math.random() < 0.5 ? '#ff3df2' : Math.random() < 0.5 ? '#3dfff2' : '#ffffff');

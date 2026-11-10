@@ -9,6 +9,7 @@ import {
   type BindableAction,
   type Input,
 } from '../core/input';
+import { COMFORT_KEYS, type Comfort } from '../core/comfort';
 import type { ScoreEntry } from '../core/scores';
 import { VOLUME_STEPS, type Settings } from '../core/settings';
 import type { ResolutionRequest } from '../render/display';
@@ -44,16 +45,24 @@ export interface PauseOptions {
   onNewGame: () => void;
 }
 
-type Item = 'resume' | 'controls' | 'music' | 'sfx' | 'scores' | 'newGame';
-type Page_ = 'main' | 'controls' | 'scores' | 'newGame';
+type Item = 'resume' | 'controls' | 'access' | 'music' | 'sfx' | 'scores' | 'newGame';
+type Page_ = 'main' | 'controls' | 'access' | 'scores' | 'newGame';
 
 const ITEM_LABELS: Record<Item, string> = {
   resume: 'RESUME',
   controls: 'CONTROLS',
+  access: 'ACCESSIBILITY',
   music: 'MUSIC',
   sfx: 'SOUND FX',
   scores: 'HIGH SCORES',
   newGame: 'NEW GAME',
+};
+
+const COMFORT_LABELS: Record<keyof Comfort, [string, string]> = {
+  reduceFlashing: ['REDUCE FLASHING', 'NO FULL-SCREEN FLASHES OR FLICKERING STATIC'],
+  reduceShake: ['REDUCE SCREEN SHAKE', 'NO CAMERA SHAKE OR SCREEN HOPS'],
+  reduceMotion: ['REDUCE MOTION', 'NO ZOOMS, SCREEN FLIPS OR LOADING STRIPES'],
+  colourBlind: ['COLOUR-BLIND PALETTE', 'DANGER IN AMBER INSTEAD OF RED'],
 };
 
 const ACTION_LABELS: Record<BindableAction, string> = {
@@ -81,6 +90,7 @@ export class PauseScene implements Scene {
   private page: Page_ = 'main';
   private cursor = 0;
   private controlsCursor = 0;
+  private accessCursor = 0;
   /** New game: 0 = NO, 1 = YES. */
   private confirmCursor = 0;
   /** The controls screen is waiting for a key for this action. */
@@ -102,7 +112,7 @@ export class PauseScene implements Scene {
   }
 
   private items(): Item[] {
-    const items: Item[] = ['resume', 'controls', 'music', 'sfx'];
+    const items: Item[] = ['resume', 'controls', 'access', 'music', 'sfx'];
     if (this.opts.highScores()) items.push('scores');
     items.push('newGame');
     return items;
@@ -116,6 +126,7 @@ export class PauseScene implements Scene {
     }
     if (this.page === 'main') this.updateMain(input);
     else if (this.page === 'controls') this.updateControls(input);
+    else if (this.page === 'access') this.updateAccess(input);
     else if (this.page === 'scores') {
       if (menuBack(input) || menuConfirm(input)) this.page = 'main';
     } else this.updateNewGame(input);
@@ -142,11 +153,38 @@ export class PauseScene implements Scene {
     else if (item === 'controls') {
       this.page = 'controls';
       this.controlsCursor = 0;
+    } else if (item === 'access') {
+      this.page = 'access';
+      this.accessCursor = 0;
     } else if (item === 'scores') this.page = 'scores';
     else if (item === 'newGame') {
       this.page = 'newGame';
       this.confirmCursor = 0;
     }
+  }
+
+  /** The accessibility page: a toggle per option, then BACK. */
+  private updateAccess(input: Input): void {
+    const n = COMFORT_KEYS.length + 1;
+    if (menuBack(input)) {
+      this.page = 'main';
+      return;
+    }
+    if (menuPressed(input, 'up')) this.accessCursor = (this.accessCursor + n - 1) % n;
+    if (menuPressed(input, 'down')) this.accessCursor = (this.accessCursor + 1) % n;
+    const key = COMFORT_KEYS[this.accessCursor];
+    const toggle =
+      menuConfirm(input) || (key && (menuPressed(input, 'left') || menuPressed(input, 'right')));
+    if (!toggle) return;
+    if (!key) {
+      this.page = 'main';
+      return;
+    }
+    const settings = this.opts.settings();
+    this.opts.setSettings({
+      ...settings,
+      comfort: { ...settings.comfort, [key]: !settings.comfort[key] },
+    });
   }
 
   private changeVolume(which: 'music' | 'sfx', step: number): void {
@@ -242,6 +280,7 @@ export class PauseScene implements Scene {
     page.shade(0.9);
     if (this.page === 'main') this.drawMain(page);
     else if (this.page === 'controls') this.drawControls(page);
+    else if (this.page === 'access') this.drawAccess(page);
     else if (this.page === 'scores') {
       drawScoreTable(page, this.opts.highScores() ?? [], this.opts.run, this.t);
       page.color(DIM).center('ESC: BACK', 166);
@@ -249,10 +288,10 @@ export class PauseScene implements Scene {
   }
 
   private drawMain(page: Page): void {
-    page.color(INK).center('PAUSED', 20, 3);
+    page.color(INK).center('PAUSED', 14, 3);
     const settings = this.opts.settings();
     this.items().forEach((item, i) => {
-      const y = 54 + i * 16;
+      const y = 42 + i * 16;
       const selected = i === this.cursor;
       page.item(ITEM_LABELS[item], 96, y, 128, 2, selected);
       if (item === 'music' || item === 'sfx') {
@@ -266,6 +305,31 @@ export class PauseScene implements Scene {
       }
     });
     page.color(DIM).center('ARROWS: CHOOSE   ENTER: SELECT   ESC: RESUME', 166);
+  }
+
+  private drawAccess(page: Page): void {
+    page.color(INK).center('ACCESSIBILITY', 14, 2);
+    const comfort = this.opts.settings().comfort;
+    COMFORT_KEYS.forEach((key, i) => {
+      const y = 44 + i * 18;
+      const selected = i === this.accessCursor;
+      page.item(COMFORT_LABELS[key][0], 56, y, 208, 2, selected);
+      page.color(selected ? BLACK : comfort[key] ? INK : DIM);
+      page.right(comfort[key] ? 'ON' : 'OFF', 264, y, 2);
+    });
+    page.item(
+      'BACK',
+      56,
+      44 + COMFORT_KEYS.length * 18 + 4,
+      208,
+      2,
+      this.accessCursor === COMFORT_KEYS.length,
+    );
+    const key = COMFORT_KEYS[this.accessCursor];
+    page.color(INK).center(key ? COMFORT_LABELS[key][1] : '', 140);
+    page.color(DIM);
+    page.center('FLASHING, SHAKE AND MOTION START ON IF YOUR', 154);
+    page.center('SYSTEM ASKS FOR REDUCED MOTION', 162);
   }
 
   private drawControls(page: Page): void {

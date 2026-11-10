@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STEP, TILE, VIEW_W } from '../src/config';
-import { FeatureRegistry, type FeatureId } from '../src/core/features';
+import { defaultComfort, type Comfort } from '../src/core/comfort';
+import { FEATURE_IDS, FeatureRegistry, type FeatureId } from '../src/core/features';
 import {
   DEFAULT_KEYS,
   MAX_KEYS_PER_ACTION,
@@ -20,8 +21,9 @@ import {
   runEntry,
 } from '../src/core/scores';
 import { VOLUME_STEPS, defaultSettings, parseSettings, volumeGain } from '../src/core/settings';
-import { Game } from '../src/game/game';
+import { CHASE_ZOOM, Game } from '../src/game/game';
 import { ERA1_LEVEL } from '../src/world/levels/era1';
+import { ERA4_LEVEL } from '../src/world/levels/era4';
 import { parseLevel } from '../src/world/tilemap';
 
 describe('key bindings', () => {
@@ -91,6 +93,7 @@ describe('settings', () => {
       music: VOLUME_STEPS,
       sfx: VOLUME_STEPS,
       keys: DEFAULT_KEYS,
+      comfort: defaultComfort(),
     });
     expect(volumeGain(VOLUME_STEPS)).toBe(1);
     expect(volumeGain(0)).toBe(0);
@@ -189,5 +192,77 @@ describe('the HIGH SCORES secret', () => {
       input.pressed.clear();
     }
     expect(features.has('HIGH_SCORES')).toBe(true);
+  });
+});
+
+describe('accessibility options', () => {
+  it('start reduced when the system asks for reduced motion (colour stays as it is)', () => {
+    expect(parseSettings(null, true).comfort).toEqual({
+      reduceFlashing: true,
+      reduceShake: true,
+      reduceMotion: true,
+      colourBlind: false,
+    });
+    expect(parseSettings(null, false).comfort.reduceMotion).toBe(false);
+    // What you chose wins over the system.
+    const chosen = parseSettings({ comfort: { reduceMotion: false, colourBlind: true } }, true);
+    expect(chosen.comfort.reduceMotion).toBe(false);
+    expect(chosen.comfort.reduceFlashing).toBe(true);
+    expect(chosen.comfort.colourBlind).toBe(true);
+  });
+
+  const comfort = (over: Partial<Comfort>): Comfort => ({ ...defaultComfort(), ...over });
+
+  /** The Block lands with a thud and a camera shake (with CAMERA). */
+  function blockLanding(c: Comfort): number {
+    const level = parseLevel(ERA1_LEVEL);
+    const features = new FeatureRegistry(FEATURE_IDS.filter((id) => id !== 'HD'));
+    const game = new Game({ features, level, comfort: c });
+    const boss = game.boss!;
+    // Mid-arena, so the camera settles on it and the Block wakes up.
+    game.player.teleport(boss.arenaX + 200, level.map.pixelHeight - TILE);
+    let shake = 0;
+    const input = new FakeInput();
+    for (let i = 0; i < 60 * 4; i++) {
+      game.update(STEP, input);
+      shake = Math.max(shake, game.camera.shake);
+      game.lives = 3;
+    }
+    return shake;
+  }
+
+  it('reduce screen shake: the camera stays still', () => {
+    expect(blockLanding(comfort({}))).toBeGreaterThan(0);
+    expect(blockLanding(comfort({ reduceShake: true }))).toBe(0);
+  });
+
+  it('reduce flashing: no invert flash when a feature unlocks', () => {
+    const run = (c: Comfort) => {
+      const rows = ['......', '.P1...', '######'];
+      const level = parseLevel({ name: 't', rows, pickups: { '1': 'JUMP' } });
+      const game = new Game({ features: new FeatureRegistry(['LEFT']), level, comfort: c });
+      let flashed = false;
+      const input = new FakeInput();
+      input.down.add('right');
+      for (let i = 0; i < 40; i++) {
+        game.update(STEP, input);
+        flashed ||= game.flashing;
+      }
+      return { moment: game.moment?.feature, flashing: flashed };
+    };
+    expect(run(comfort({}))).toEqual({ moment: 'JUMP', flashing: true });
+    expect(run(comfort({ reduceFlashing: true }))).toEqual({ moment: 'JUMP', flashing: false });
+  });
+
+  it('reduce motion: the Chase does not zoom in', () => {
+    const run = (c: Comfort) => {
+      const features = new FeatureRegistry(FEATURE_IDS.filter((id) => id !== 'HD'));
+      const game = new Game({ features, level: parseLevel(ERA4_LEVEL), comfort: c });
+      game.wave!.start(game.player.feetX - 100);
+      game.update(STEP, new FakeInput());
+      return game.camera.zoomTarget;
+    };
+    expect(run(comfort({}))).toBe(CHASE_ZOOM);
+    expect(run(comfort({ reduceMotion: true }))).toBe(1);
   });
 });

@@ -1,4 +1,5 @@
 import { TILE, VIEW_H, VIEW_W } from '../config';
+import { defaultComfort, type Comfort } from '../core/comfort';
 import type { FeatureId, FeatureRegistry } from '../core/features';
 import type { ActionState } from '../core/input';
 import { overlaps } from '../world/physics';
@@ -151,6 +152,8 @@ export interface GameOptions {
   finaleDone?: boolean;
   /** HIGH SCORES: the top of the table, for the HUD. */
   hiScore?: number;
+  /** Accessibility options (the pause menu). */
+  comfort?: Comfort;
 }
 
 /**
@@ -213,6 +216,8 @@ export class Game {
   displayScore: number;
   /** HIGH SCORES: the best score in the table (the HUD shows whichever is higher). */
   hiScore: number;
+  /** Accessibility options; the app swaps in a new object when they change. */
+  comfort: Comfort;
   /** Feet position to respawn at; moves to each collected pickup. */
   checkpoint: Point;
   lives = START_LIVES;
@@ -319,14 +324,15 @@ export class Game {
     this.score = options.score ?? 0;
     this.displayScore = this.score;
     this.hiScore = options.hiScore ?? 0;
+    this.comfort = options.comfort ?? defaultComfort();
     this.furthestColumn = Math.floor(this.checkpoint.x / TILE);
     this.syncWithFeatures();
     this.camera.snap(this.player.feetX, this.playerCenterY);
   }
 
-  /** True during the brief invert-flash at the start of an unlock moment. */
+  /** True during the brief invert-flash at the start of an unlock moment (unless that's off). */
   get flashing(): boolean {
-    return this.moment !== null && this.moment.t < MOMENT_FLASH;
+    return this.moment !== null && this.moment.t < MOMENT_FLASH && !this.comfort.reduceFlashing;
   }
 
   get playerCenterY(): number {
@@ -410,7 +416,8 @@ export class Game {
     this.updateIntensity(dt);
 
     this.camera.leadTarget = this.features.has('CAMERA') ? this.player.facing * LOOK_AHEAD : 0;
-    this.camera.zoomTarget = this.features.has('CAMERA') && this.wave?.active ? CHASE_ZOOM : 1;
+    const zoom = this.features.has('CAMERA') && this.wave?.active && !this.comfort.reduceMotion;
+    this.camera.zoomTarget = zoom ? CHASE_ZOOM : 1;
     this.camera.update(this.player.feetX, this.playerCenterY);
     const gap = Math.abs(this.score - this.displayScore);
     this.displayScore = approach(this.displayScore, this.score, Math.max(1, gap * 0.08));
@@ -1262,7 +1269,9 @@ export class Game {
 
   /** CAMERA: screen shake, only once you have it. */
   private shakeCamera(amount: number): void {
-    if (this.features.has('CAMERA')) this.camera.shake = Math.max(this.camera.shake, amount);
+    if (this.features.has('CAMERA') && !this.comfort.reduceShake) {
+      this.camera.shake = Math.max(this.camera.shake, amount);
+    }
     this.rumble(amount / 8, 0.12 + amount * 0.03);
   }
 

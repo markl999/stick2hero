@@ -460,6 +460,7 @@ function drawEnhance(f: HdFrame): void {
   const t = m.t - MOMENT_FLASH;
   const i = Math.floor(t / 0.22);
   if (t < 0) {
+    if (f.game.comfort.reduceFlashing) return;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
     return;

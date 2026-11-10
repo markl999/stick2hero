@@ -29,14 +29,18 @@ async function boot(): Promise<void> {
   input.attach(window, () => audio.unlock());
 
   // Options (volume, keys) and the high-score table live apart from the save.
-  let settings: Settings = loadSettings();
+  // The system's reduced-motion preference sets the defaults for the comfort options.
+  const systemReducedMotion =
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  let settings: Settings = loadSettings(systemReducedMotion);
   const applySettings = () => {
     input.setBindings(settings.keys);
     audio.setVolumes(volumeGain(settings.music), volumeGain(settings.sfx));
   };
   applySettings();
   let scores: ScoreEntry[] = loadScores();
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  /** The tape loader's and the ending's stripes: off with reduced motion or flashing. */
+  const calmStripes = () => settings.comfort.reduceMotion || settings.comfort.reduceFlashing;
 
   const parent = document.getElementById('app');
   if (!parent) throw new Error('#app missing');
@@ -107,6 +111,7 @@ async function boot(): Promise<void> {
       checkpoint,
       finaleDone: save.cleared,
       hiScore: scores[0]?.score ?? 0,
+      comfort: settings.comfort,
     });
     gameScene = new GameScene(game, onRequest);
   };
@@ -140,6 +145,7 @@ async function boot(): Promise<void> {
           settings = next;
           writeSettings(next);
           applySettings();
+          game.comfort = next.comfort;
         },
         previewSfx: () => audio.beep(),
         highScores: () => (features.has('HIGH_SCORES') ? scores : null),
@@ -196,7 +202,7 @@ async function boot(): Promise<void> {
           audio,
           score: game.score,
           deaths: game.stats.deaths,
-          reducedMotion,
+          reducedMotion: calmStripes(),
           onDone: () =>
             thenScores(() => {
               // Back on the roof, the Deprecator gone, everything yours.
@@ -293,7 +299,7 @@ async function boot(): Promise<void> {
     new TapeLoaderScene({
       audio,
       skippable: save.introSeen,
-      reducedMotion,
+      reducedMotion: calmStripes(),
       onDone: (completed) => {
         if (completed && !save.introSeen) {
           save.introSeen = true;

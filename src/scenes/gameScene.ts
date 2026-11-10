@@ -50,7 +50,8 @@ export class GameScene implements Scene {
     // Photo mode's 1978 filter is crisp black and white: no glow.
     if (this.game.photo?.filter === '1978') return null;
     let k = 1;
-    if (moment?.feature === 'BLOOM' && (moment.kind ?? 'added') === 'added') {
+    const calm = this.game.comfort.reduceFlashing;
+    if (!calm && moment?.feature === 'BLOOM' && (moment.kind ?? 'added') === 'added') {
       // It ramps up past "too much", then settles at merely too much.
       const t = moment.t;
       k = t < 0.8 ? t / 0.8 : 1 + Math.max(0, 1 - (t - 0.8) / 1.2) * 0.8;

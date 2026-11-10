@@ -9,14 +9,7 @@ import {
 } from '../core/scores';
 import { RESOLUTIONS, type Resolution } from '../render/display';
 import type { PixelCanvas } from '../render/pixelCanvas';
-import {
-  BLACK,
-  DIM,
-  INK,
-  PHOSPHOR,
-  Page,
-  drawScoreTable,
-} from './menuDraw';
+import { BLACK, DIM, INK, PHOSPHOR, Page, drawScoreTable } from './menuDraw';
 import type { Scene } from './scene';
 
 export interface HighScoreOptions {

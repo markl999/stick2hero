@@ -26,6 +26,9 @@ Each ability only works once you've collected it.
 - **CONTROLS:** see every binding and rebind the keyboard. Select an action, then press a new key to
   add it, or one of its keys to remove it (for example W from JUMP, if you don't want up to jump).
   Esc, Enter and the arrow keys always work in menus, so a bad binding can't lock you out.
+- **ACCESSIBILITY:** reduce flashing, reduce screen shake, reduce motion (the first three start
+  on if your system asks for reduced motion) and a colour-blind palette (danger in amber instead
+  of red; hot bricks also carry a flame mark, so colour is never the only cue).
 - **MUSIC and SOUND FX** volume.
 - **NEW GAME:** start again from the tape. Your high scores, volume and keys are kept.
 

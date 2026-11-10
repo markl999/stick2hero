@@ -1,3 +1,4 @@
+import { defaultComfort, parseComfort, type Comfort } from './comfort';
 import { DEFAULT_KEYS, copyBindings, sanitiseBindings, type KeyBindings } from './input';
 import { readJson, writeJson } from './storage';
 
@@ -10,13 +11,20 @@ export interface Settings {
   music: number;
   sfx: number;
   keys: KeyBindings;
+  comfort: Comfort;
 }
 
 const KEY = 'stick2hero.settings.v1';
 export const VOLUME_STEPS = 10;
 
-export function defaultSettings(): Settings {
-  return { music: VOLUME_STEPS, sfx: VOLUME_STEPS, keys: copyBindings(DEFAULT_KEYS) };
+/** `systemReducedMotion`: the browser's prefers-reduced-motion, for the comfort defaults. */
+export function defaultSettings(systemReducedMotion = false): Settings {
+  return {
+    music: VOLUME_STEPS,
+    sfx: VOLUME_STEPS,
+    keys: copyBindings(DEFAULT_KEYS),
+    comfort: defaultComfort(systemReducedMotion),
+  };
 }
 
 function volume(value: unknown): number {
@@ -25,14 +33,19 @@ function volume(value: unknown): number {
     : VOLUME_STEPS;
 }
 
-export function parseSettings(value: unknown): Settings {
-  if (typeof value !== 'object' || value === null) return defaultSettings();
+export function parseSettings(value: unknown, systemReducedMotion = false): Settings {
+  if (typeof value !== 'object' || value === null) return defaultSettings(systemReducedMotion);
   const raw = value as Record<string, unknown>;
-  return { music: volume(raw.music), sfx: volume(raw.sfx), keys: sanitiseBindings(raw.keys) };
+  return {
+    music: volume(raw.music),
+    sfx: volume(raw.sfx),
+    keys: sanitiseBindings(raw.keys),
+    comfort: parseComfort(raw.comfort, systemReducedMotion),
+  };
 }
 
-export function loadSettings(): Settings {
-  return parseSettings(readJson(KEY));
+export function loadSettings(systemReducedMotion = false): Settings {
+  return parseSettings(readJson(KEY), systemReducedMotion);
 }
 
 export function writeSettings(settings: Settings): void {

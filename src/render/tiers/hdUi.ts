@@ -176,7 +176,7 @@ function drawRestore(f: HdFrame): void {
   const fin = game.finale;
   if (!fin || fin.state !== 'restore') return;
   const t = fin.t;
-  if (t < 0.6) {
+  if (t < 0.6 && !game.comfort.reduceFlashing) {
     ctx.fillStyle = `rgba(255,255,255,${(1 - t / 0.6).toFixed(3)})`;
     ctx.fillRect(0, 0, W, H);
   }
@@ -361,7 +361,7 @@ function drawBanner(f: HdFrame): void {
 /** The start of every moment: a soft white flash (HD is too classy to invert). */
 function drawFlash(f: HdFrame): void {
   const m = f.game.moment;
-  if (!m || m.t > MOMENT_HITSTOP || m.feature === 'HD') return;
+  if (!m || m.t > MOMENT_HITSTOP || m.feature === 'HD' || f.game.comfort.reduceFlashing) return;
   const k = 1 - m.t / MOMENT_HITSTOP;
   f.ctx.fillStyle =
     m.kind === 'removed'
@@ -420,7 +420,7 @@ function drawPhotoUi(f: HdFrame): void {
   if (photo.shots > 0) {
     text(f, `${photo.shots} SAVED`, W - u * 5, u * 6, u * 1.9, NEON_GOLD, 'right', 700);
   }
-  if (photo.flashT > 0) {
+  if (photo.flashT > 0 && !game.comfort.reduceFlashing) {
     ctx.fillStyle = `rgba(255,255,255,${(photo.flashT / 0.3).toFixed(3)})`;
     ctx.fillRect(0, 0, W, H);
   }
