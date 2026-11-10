@@ -5,86 +5,117 @@ import { FixedLoop } from './core/loop';
 import { clearSave, loadSave, writeSave } from './core/save';
 import { DebugOverlay } from './debug/overlay';
 import { Game } from './game/game';
-import { Display, RESOLUTIONS, type Resolution } from './render/display';
-import { drawEra0 } from './render/tiers/era0';
-import { TEST_ROOM } from './world/levels/testRoom';
+import { Display, type Resolution } from './render/display';
+import { EraEndScene } from './scenes/eraEnd';
+import { GameScene } from './scenes/gameScene';
+import type { Scene } from './scenes/scene';
+import { TapeLoaderScene } from './scenes/tapeLoader';
+import { ERA0_LEVEL } from './world/levels/era0';
 import { parseLevel } from './world/tilemap';
 
 async function boot(): Promise<void> {
+  const params = new URLSearchParams(location.search);
   const save = loadSave();
   const features = new FeatureRegistry(save.features);
   const audio = new AudioEngine();
   const input = new Input();
   input.attach(window, () => audio.unlock());
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
-  const game = new Game(
+  const game = new Game({
     features,
-    parseLevel(TEST_ROOM),
-    { beep: () => audio.beep(), save: () => persist() },
-    save.score,
-  );
+    level: parseLevel(ERA0_LEVEL),
+    hooks: { beep: () => audio.beep(), save: () => persist() },
+    score: save.score,
+    checkpoint: save.checkpoint,
+  });
   const persist = () =>
     writeSave({
       version: 1,
       features: features.list(),
       score: game.score,
       introSeen: save.introSeen,
+      checkpoint: game.checkpoint,
     });
+  features.onChange(() => persist());
 
   const parent = document.getElementById('app');
   if (!parent) throw new Error('#app missing');
 
-  // Only Era 0 exists so far; later eras will choose their resolution from the feature set.
-  const eraResolution = (): Resolution => RESOLUTIONS.ERA0;
+  // --- Scenes ---------------------------------------------------------------------
   let resolutionOverride: Resolution | null = null;
-
-  const display = await Display.create(parent, eraResolution());
-
+  let scene: Scene;
+  const display = await Display.create(parent, { width: 320, height: 180 });
   const loop = new FixedLoop({
     step: (dt) => {
       input.poll();
-      game.update(dt, input);
+      scene.update(dt, input);
+      loop.renderCap = scene.renderCap();
     },
     render: (alpha) => {
-      drawEra0(display.pixel, game, alpha);
+      scene.render(display.pixel, alpha);
       display.present();
       debug?.update();
     },
   });
 
-  const applyFeatures = () => {
-    loop.renderCap = features.has('FRAME_RATE') ? null : 15;
-    display.setResolution(resolutionOverride ?? eraResolution());
+  const setScene = (next: Scene) => {
+    scene = next;
+    applyResolution();
+  };
+  const applyResolution = () => {
+    display.setResolution(resolutionOverride ?? scene.resolution());
+    loop.renderCap = scene.renderCap();
     loop.requestRender();
   };
-  features.onChange(() => {
-    applyFeatures();
-    persist();
-  });
-  applyFeatures();
+
+  const gameScene = new GameScene(game, () => setScene(new EraEndScene(() => setScene(gameScene))));
+  const tapeScene = () =>
+    new TapeLoaderScene({
+      audio,
+      skippable: save.introSeen,
+      reducedMotion,
+      onDone: (completed) => {
+        if (completed && !save.introSeen) {
+          save.introSeen = true;
+          persist();
+        }
+        setScene(gameScene);
+      },
+    });
+
+  setScene(params.has('skipintro') ? gameScene : tapeScene());
 
   window.addEventListener('resize', () => {
     display.resize(window.innerWidth, window.innerHeight);
     loop.requestRender();
   });
 
-  const debugEnabled = import.meta.env.DEV || new URLSearchParams(location.search).has('debug');
+  // --- Debug ----------------------------------------------------------------------
+  const debugEnabled = import.meta.env.DEV || params.has('debug');
   const debug = debugEnabled
     ? new DebugOverlay({
         features,
         game,
         loop,
         display,
+        sceneName: () => scene.name,
         setResolutionOverride: (res) => {
           resolutionOverride = res;
-          applyFeatures();
+          applyResolution();
         },
+        playIntro: () => setScene(tapeScene()),
         resetSave: () => {
           clearSave();
           location.reload();
         },
       })
     : null;
+
+  // Dev-only handle for poking at the game from the console or browser automation.
+  if (import.meta.env.DEV) {
+    Object.assign(window, { __stick2hero: { game, features, setScene, gameScene } });
+  }
 
   loop.start();
 }

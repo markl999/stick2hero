@@ -24,25 +24,47 @@ export interface FeatureDef {
   label: string;
   era: Era;
   description: string;
+  /** Second line of the unlock banner: a nudge on how to use it, or a joke. */
+  hint: string;
 }
 
 export const FEATURES: Record<FeatureId, FeatureDef> = {
-  LEFT: { id: 'LEFT', label: '< LEFT', era: 0, description: 'Walk left.' },
-  JUMP: { id: 'JUMP', label: 'JUMP', era: 0, description: 'Jump.' },
-  BEEP: { id: 'BEEP', label: 'BEEP', era: 0, description: 'A single beep when you jump.' },
+  LEFT: { id: 'LEFT', label: '< LEFT', era: 0, description: 'Walk left.', hint: 'THE OTHER WAY' },
+  JUMP: { id: 'JUMP', label: 'JUMP', era: 0, description: 'Jump.', hint: 'PRESS SPACE' },
+  BEEP: {
+    id: 'BEEP',
+    label: 'BEEP',
+    era: 0,
+    description: 'A single beep when you jump.',
+    hint: 'TRY JUMPING',
+  },
   SCREEN_2: {
     id: 'SCREEN_2',
     label: 'SCREEN 2',
     era: 0,
     description: 'Flip-screen: walk off the edge to the next screen.',
+    hint: 'THE WORLD GOT BIGGER',
   },
-  ARMS: { id: 'ARMS', label: 'ARMS', era: 0, description: 'Arms. Grab ledges and climb.' },
-  SCORE: { id: 'SCORE', label: 'SCORE', era: 0, description: 'A score HUD.' },
+  ARMS: {
+    id: 'ARMS',
+    label: 'ARMS',
+    era: 0,
+    description: 'Arms. Grab ledges and climb.',
+    hint: 'JUMP AT A WALL AND HOLD ON',
+  },
+  SCORE: {
+    id: 'SCORE',
+    label: 'SCORE',
+    era: 0,
+    description: 'A score HUD.',
+    hint: 'WE WERE KEEPING SCORE',
+  },
   FRAME_RATE: {
     id: 'FRAME_RATE',
     label: 'FRAME RATE',
     era: 0,
     description: '15fps becomes smooth 60fps.',
+    hint: 'SMOOOOOOTH',
   },
 };
 

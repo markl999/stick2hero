@@ -254,7 +254,7 @@ Multiplayer, true 3D, procedural levels, monetisation or ads, mobile store build
 | #     | Milestone                 | Outcome                                                                                                                                                                 |
 | ----- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0 ✅ | Foundations               | Vite + Pixi + TypeScript running. Fixed-timestep loop, input, feature registry, low-res render target, AABB tile physics. The stick man walks and jumps in a test room. |
-| M1    | Era 0 + Tape Loader       | The full intro and BOOT chapter, all 7 features with their moments, autosave.                                                                                           |
+| M1 ✅ | Era 0 + Tape Loader       | The full intro and BOOT chapter, all 7 features with their moments, autosave.                                                                                           |
 | M2    | Vertical slice (Eras 0–2) | Enemies, death, lives, colour, scrolling, chiptune, two bosses. **Playtest with 3–5 people.**                                                                           |
 | M3    | Era 3                     | Parallax, samples, face, NPCs, sword, dash, boss.                                                                                                                       |
 | M4    | Era 4                     | Transparency, particles, lighting, CD audio, cutscene, chase.                                                                                                           |
@@ -308,7 +308,8 @@ The idea is in the same family as "the game evolves as you play" titles (e.g. _E
 
 ### Still open (not blocking M0–M2)
 
-| #   | Question                                                                                    | Needed by |
-| --- | ------------------------------------------------------------------------------------------- | --------- |
-| 9   | Music source for Era 4–5 (`CD AUDIO`, `ADAPTIVE MUSIC`): commission, licence, or self-made? | M4        |
-| 10  | Hosting choice (Netlify / Vercel / GitHub Pages) and domain                                 | M2        |
+| #   | Question                                                                                                                         | Needed by   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 9   | Music source for Era 4–5 (`CD AUDIO`, `ADAPTIVE MUSIC`): commission, licence, or self-made?                                      | M4          |
+| 10  | Hosting choice (Netlify / Vercel / GitHub Pages) and domain                                                                      | M2          |
+| 11  | Era 0 length: the M1 level plays in about 3–4 minutes against a ~10-minute target. Add screens, or accept a shorter opening era? | M2 playtest |

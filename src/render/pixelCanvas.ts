@@ -1,4 +1,4 @@
-import { glyph, GLYPH_H, GLYPH_W, textWidth } from './font3x5';
+import { glyph, GLYPH_H, textWidth } from './font3x5';
 
 /**
  * A pixel-perfect drawing surface for the low-res eras. Everything is integer
@@ -28,6 +28,22 @@ export class PixelCanvas {
   resize(width: number, height: number): void {
     this.canvas.width = width;
     this.canvas.height = height;
+  }
+
+  /** Draw everything inside `fn` mirrored left-to-right (the ← LEFT moment). */
+  mirrored(fn: () => void): void {
+    this.ctx.save();
+    this.ctx.setTransform(-1, 0, 0, 1, this.width, 0);
+    fn();
+    this.ctx.restore();
+  }
+
+  imageData(): ImageData {
+    return this.ctx.getImageData(0, 0, this.width, this.height);
+  }
+
+  putImage(image: ImageData, x: number, y: number): void {
+    this.ctx.putImageData(image, Math.round(x), Math.round(y));
   }
 
   clear(color: string): void {
@@ -131,11 +147,11 @@ export class PixelCanvas {
     for (const ch of text) {
       const rows = glyph(ch);
       for (let gy = 0; gy < GLYPH_H; gy++) {
-        for (let gx = 0; gx < GLYPH_W; gx++) {
+        for (let gx = 0; gx < rows[gy].length; gx++) {
           if (rows[gy][gx]) this.ctx.fillRect(cx + gx * s, cy + gy * s, s, s);
         }
       }
-      cx += (GLYPH_W + 1) * s;
+      cx += (rows[0].length + 1) * s;
     }
   }
 

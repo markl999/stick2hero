@@ -7,10 +7,12 @@ export interface SaveData {
   features: FeatureId[];
   score: number;
   introSeen: boolean;
+  /** Feet position to resume from, or null for the level spawn. */
+  checkpoint: { x: number; y: number } | null;
 }
 
 export function defaultSave(): SaveData {
-  return { version: 1, features: [], score: 0, introSeen: false };
+  return { version: 1, features: [], score: 0, introSeen: false, checkpoint: null };
 }
 
 function storage(): Storage | null {
@@ -34,10 +36,17 @@ export function loadSave(): SaveData {
       features: Array.isArray(data.features) ? data.features.filter(isFeatureId) : [],
       score: typeof data.score === 'number' && Number.isFinite(data.score) ? data.score : 0,
       introSeen: data.introSeen === true,
+      checkpoint: isPoint(data.checkpoint) ? data.checkpoint : null,
     };
   } catch {
     return defaultSave();
   }
+}
+
+function isPoint(value: unknown): value is { x: number; y: number } {
+  if (typeof value !== 'object' || value === null) return false;
+  const { x, y } = value as Record<string, unknown>;
+  return typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y);
 }
 
 export function writeSave(data: SaveData): void {

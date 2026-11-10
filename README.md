@@ -15,9 +15,10 @@ npm run check   # type-check, lint, tests
 npm run build   # static build in dist/
 ```
 
-**Controls:** ← → / A D to move · Space / W / ↑ to jump · gamepad supported.
+**Controls:** ← → / A D to move · Space / W / ↑ to jump (and climb, once you have arms) · ↓ to
+let go of a ledge · gamepad supported.
 
 ## Status
 
-M0 (foundations) is done: fixed-timestep loop, feature registry, low-res render pipeline, tile
-physics, and an Era 0 test room. Next is M1: the tape-loader intro and the full Era 0 chapter.
+M1 is done: the tape-loader intro and a playable Era 0 (BOOT) chapter with all seven of its
+features. Next is M2: Eras 1–2 (enemies, death, colour, scrolling, chiptune) and the first playtest.

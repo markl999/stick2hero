@@ -1,6 +1,6 @@
 import { TILE, VIEW_H, VIEW_W } from '../../config';
 import { FEATURES } from '../../core/features';
-import { MOMENT_DURATION, type Game } from '../../game/game';
+import { MOMENT_DURATION, MOMENT_FLASH, MOMENT_HITSTOP, type Game } from '../../game/game';
 import { PICKUP_SIZE } from '../../game/pickup';
 import { GLYPH_H, textWidth } from '../font3x5';
 import type { PixelCanvas } from '../pixelCanvas';
@@ -16,17 +16,80 @@ const INK = '#000000';
  */
 export function drawEra0(p: PixelCanvas, game: Game, alpha: number): void {
   const s = p.width / VIEW_W; // pixels per world unit
-  const cam = game.camera;
-  const X = (wx: number) => Math.round((wx - cam.x) * s);
-  const Y = (wy: number) => Math.round((wy - cam.y) * s);
   /** Font scale: one font pixel = 2 world units (1px at 160×90). */
   const fs = Math.max(1, Math.round(2 * s));
+  const moment = game.moment;
+  const t = moment?.t ?? Infinity;
 
   const inverted = game.flashing;
-  const paper = inverted ? INK : PAPER;
-  const ink = inverted ? PAPER : INK;
-  p.clear(paper);
-  p.color(ink);
+  p.clear(inverted ? INK : PAPER);
+  p.color(inverted ? PAPER : INK);
+
+  // Moment effects on the whole world.
+  // JUMP: the screen itself hops.
+  const hop =
+    moment?.feature === 'JUMP' && t >= MOMENT_FLASH && t < 0.6
+      ? -Math.round(Math.sin((Math.PI * (t - MOMENT_FLASH)) / (0.6 - MOMENT_FLASH)) * 8 * s)
+      : 0;
+  // ← LEFT: the world briefly turns around.
+  const mirror = moment?.feature === 'LEFT' && t >= MOMENT_FLASH && t < MOMENT_HITSTOP;
+
+  const drawWorld = () => drawScene(p, game, alpha, s, fs, hop);
+  if (mirror) p.mirrored(drawWorld);
+  else drawWorld();
+
+  // SCREEN 2: point at the exit.
+  if (moment?.feature === 'SCREEN_2' && t > MOMENT_HITSTOP && Math.floor(t * 4) % 2 === 0) {
+    const y = Math.round(p.height * 0.62);
+    p.text('>>', p.width - (textWidth('>>') + 2) * fs, y, fs);
+  }
+
+  // HUD.
+  if (game.features.has('SCORE')) {
+    const score = Math.floor(game.displayScore).toString().padStart(6, '0');
+    p.text(`SCORE ${score}`, 2 * fs, 2 * fs, fs);
+  }
+
+  // Unlock banner: what you got, and a nudge on how to use it.
+  if (moment && t >= MOMENT_FLASH) {
+    const blinkingOut = t > MOMENT_DURATION - 0.5 && Math.floor(t * 8) % 2 === 0;
+    if (!blinkingOut) {
+      const def = FEATURES[moment.feature];
+      // Whichever half of the screen the player isn't in.
+      const playerY = (game.playerCenterY - game.camera.y) / VIEW_H;
+      const top = Math.round(p.height * (playerY < 0.5 ? 0.58 : 0.15));
+      // A plain outlined box so level lines never run through the text.
+      const width =
+        Math.max(textWidth('FEATURE ADDED'), textWidth(def.label) * 2, textWidth(def.hint)) * fs;
+      const pad = 3 * fs;
+      const box = {
+        x: Math.round(p.width / 2 - width / 2) - pad,
+        y: top - pad,
+        w: width + pad * 2,
+        h: (GLYPH_H * 4 + 6) * fs + pad * 2,
+      };
+      p.color(inverted ? INK : PAPER);
+      p.rect(box.x, box.y, box.w, box.h);
+      p.color(inverted ? PAPER : INK);
+      p.strokeRect(box.x, box.y, box.w, box.h);
+      p.textCentered('FEATURE ADDED', p.width / 2, top, fs);
+      p.textCentered(def.label, p.width / 2, top + (GLYPH_H + 3) * fs, fs * 2);
+      p.textCentered(def.hint, p.width / 2, top + (GLYPH_H * 3 + 6) * fs, fs);
+    }
+  }
+}
+
+function drawScene(
+  p: PixelCanvas,
+  game: Game,
+  alpha: number,
+  s: number,
+  fs: number,
+  offsetY: number,
+): void {
+  const cam = game.camera;
+  const X = (wx: number) => Math.round((wx - cam.x) * s);
+  const Y = (wy: number) => Math.round((wy - cam.y) * s) + offsetY;
 
   // Tiles: outline only the edges that face empty space, so solid regions read as line art.
   const map = game.map;
@@ -72,28 +135,19 @@ export function drawEra0(p: PixelCanvas, game: Game, alpha: number): void {
   const player = game.player;
   const px = lerp(player.prevX, player.box.x, alpha) + player.box.w / 2;
   const py = lerp(player.prevY, player.box.y, alpha) + player.box.h;
-  const pose = era0Pose({ arms: game.features.has('ARMS') });
+  const moment = game.moment;
+  // ARMS: the new arms blink in.
+  const armsBlinking =
+    moment?.feature === 'ARMS' && moment.t < 1.2 && Math.floor(moment.t * 10) % 2 === 0;
+  const pose = era0Pose({
+    arms: game.features.has('ARMS') && !armsBlinking,
+    state: player.state,
+    facing: player.facing,
+  });
   for (const [x0, y0, x1, y1] of pose.segments) {
     p.line(X(px + x0), Y(py + y0), X(px + x1), Y(py + y1));
   }
   p.circle(X(px + pose.head.x), Y(py + pose.head.y), pose.head.r * s);
-
-  // HUD.
-  if (game.features.has('SCORE')) {
-    const score = Math.floor(game.displayScore).toString().padStart(6, '0');
-    p.text(`SCORE ${score}`, 2 * fs, 2 * fs, fs);
-  }
-
-  // Unlock moment banner (placeholder until each feature gets its own moment in M1).
-  const moment = game.moment;
-  if (moment) {
-    const blinkingOut = moment.t > MOMENT_DURATION - 0.5 && Math.floor(moment.t * 8) % 2 === 0;
-    if (!blinkingOut) {
-      const top = Math.round(p.height * 0.22);
-      p.textCentered('FEATURE ADDED', p.width / 2, top, fs);
-      p.textCentered(FEATURES[moment.feature].label, p.width / 2, top + (GLYPH_H + 3) * fs, fs * 2);
-    }
-  }
 }
 
 function lerp(a: number, b: number, t: number): number {

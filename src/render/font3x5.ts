@@ -1,5 +1,7 @@
-/** A tiny 3×5 pixel font for the earliest eras. Each glyph is 5 rows of 3 columns. */
-export const GLYPH_W = 3;
+/**
+ * A tiny pixel font for the earliest eras. Glyphs are 5 rows tall and usually 3 wide;
+ * M, N and W are wider because they're unreadable at 3 (like real 8-bit fonts).
+ */
 export const GLYPH_H = 5;
 
 const RAW: Record<string, string> = {
@@ -15,8 +17,8 @@ const RAW: Record<string, string> = {
   J: '..# ..# ..# #.# .#.',
   K: '#.# #.# ##. #.# #.#',
   L: '#.. #.. #.. #.. ###',
-  M: '#.# ### #.# #.# #.#',
-  N: '##. #.# #.# #.# #.#',
+  M: '#...# ##.## #.#.# #...# #...#',
+  N: '#..# ##.# #.## #..# #..#',
   O: '.#. #.# #.# #.# .#.',
   P: '##. #.# ##. #.. #..',
   Q: '.#. #.# #.# ##. .##',
@@ -25,7 +27,7 @@ const RAW: Record<string, string> = {
   T: '### .#. .#. .#. .#.',
   U: '#.# #.# #.# #.# ###',
   V: '#.# #.# #.# #.# .#.',
-  W: '#.# #.# #.# ### #.#',
+  W: '#...# #...# #.#.# ##.## #...#',
   X: '#.# #.# .#. #.# #.#',
   Y: '#.# #.# .#. .#. .#.',
   Z: '### ..# .#. #.. ###',
@@ -63,7 +65,13 @@ export function glyph(ch: string): boolean[][] {
   return GLYPHS.get(ch.toUpperCase()) ?? GLYPHS.get('?')!;
 }
 
+export function glyphWidth(ch: string): number {
+  return glyph(ch)[0].length;
+}
+
 /** Width in font pixels (before scaling), with 1px spacing between glyphs. */
 export function textWidth(text: string): number {
-  return text.length === 0 ? 0 : text.length * (GLYPH_W + 1) - 1;
+  let width = 0;
+  for (const ch of text) width += glyphWidth(ch) + 1;
+  return Math.max(0, width - 1);
 }

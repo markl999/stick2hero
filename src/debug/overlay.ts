@@ -9,7 +9,9 @@ export interface DebugDeps {
   loop: FixedLoop;
   display: Display;
   /** Set a resolution override, or null to go back to the era's own resolution. */
+  sceneName(): string;
   setResolutionOverride(res: Resolution | null): void;
+  playIntro(): void;
   resetSave(): void;
 }
 
@@ -65,11 +67,12 @@ export class DebugOverlay {
     const p = game.player;
     const res = display.currentResolution;
     this.stats.textContent = [
+      `scene  ${this.deps.sceneName()}`,
       `render ${loop.renderFps.toFixed(0)} fps (cap ${loop.renderCap ?? 'none'})`,
       `sim    ${loop.stepsPerSecond.toFixed(0)} Hz`,
       `res    ${res.width}×${res.height}`,
       `pos    ${p.feetX.toFixed(1)}, ${p.feetY.toFixed(1)}`,
-      `vel    ${p.vx.toFixed(0)}, ${p.vy.toFixed(0)}  ${p.onGround ? 'ground' : 'air'}`,
+      `vel    ${p.vx.toFixed(0)}, ${p.vy.toFixed(0)}  ${p.state === 'normal' ? (p.onGround ? 'ground' : 'air') : p.state}`,
       `cam    ${game.camera.mode} @ ${game.camera.x}, ${game.camera.y}`,
       `score  ${game.score}`,
     ].join('\n');
@@ -145,6 +148,7 @@ export class DebugOverlay {
     row.append(
       button('all on', () => FEATURE_IDS.forEach((id) => features.unlock(id))),
       button('all off', () => FEATURE_IDS.forEach((id) => features.lock(id))),
+      button('tape intro', () => this.deps.playIntro()),
       button('reset save', () => this.deps.resetSave()),
     );
     return row;
