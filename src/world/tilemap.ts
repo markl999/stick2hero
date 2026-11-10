@@ -12,7 +12,9 @@ import type { Era, FeatureId } from '../core/features';
  *   'e'  walker enemy (exists once ENEMIES does)
  *   'F'  checkpoint flag (works once CHECKPOINTS exists)
  *   's'  switch (hit it with a thrown pebble)
- *   'B'  The Block (Era 1 boss),  'V'  Flicker (Era 2 boss)
+ *   'k'  knight (Era 3: armoured, takes 3 sword hits)
+ *   'B'  The Block (Era 1 boss),  'V'  Flicker (Era 2 boss),  'W'  The Warden (Era 3 boss)
+ *   any key of `npcs` → a character you can talk to (once NPCS exists)
  *   Entity positions are feet positions: bottom of the tile, horizontally centred.
  *   any key of `pickups` → a Feature pickup centred in that tile
  */
@@ -22,6 +24,8 @@ export interface LevelDef {
   era?: Era;
   rows: string[];
   pickups: Record<string, FeatureId>;
+  /** NPC characters: grid character → their lines of dialogue (one page each). */
+  npcs?: Record<string, string[]>;
 }
 
 export interface PickupSpawn {
@@ -31,10 +35,13 @@ export interface PickupSpawn {
   y: number;
 }
 
-export type EntityKind = 'walker' | 'block' | 'flicker' | 'flag' | 'switch';
+export type EntityKind =
+  'walker' | 'knight' | 'block' | 'flicker' | 'warden' | 'flag' | 'switch' | 'npc';
 
 export interface EntitySpawn {
   kind: EntityKind;
+  /** For NPCs: their grid character, which keys their dialogue. */
+  id?: string;
   /** Feet position, in world units. */
   x: number;
   y: number;
@@ -48,6 +55,8 @@ export interface ParsedLevel {
   spawn: { x: number; y: number };
   pickups: PickupSpawn[];
   entities: EntitySpawn[];
+  /** NPC id → pages of dialogue. */
+  dialogue: Record<string, string[]>;
 }
 
 export interface SolidQuery {
@@ -143,7 +152,9 @@ export class TileMap implements SolidQuery {
 
 const ENTITY_CHARS: Record<string, EntityKind> = {
   e: 'walker',
+  k: 'knight',
   B: 'block',
+  W: 'warden',
   V: 'flicker',
   F: 'flag',
   s: 'switch',
@@ -172,6 +183,7 @@ export function parseLevel(def: LevelDef): ParsedLevel {
       else if (ch === 'D') tiles[ty * width + tx] = Tile.Door;
       else if (ch === 'P') spawn = feet;
       else if (ch in ENTITY_CHARS) entities.push({ kind: ENTITY_CHARS[ch], ...feet });
+      else if (def.npcs && ch in def.npcs) entities.push({ kind: 'npc', id: ch, ...feet });
       else if (ch in def.pickups) {
         pickups.push({
           feature: def.pickups[ch],
@@ -192,5 +204,6 @@ export function parseLevel(def: LevelDef): ParsedLevel {
     spawn,
     pickups,
     entities,
+    dialogue: def.npcs ?? {},
   };
 }

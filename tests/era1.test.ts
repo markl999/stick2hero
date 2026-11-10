@@ -57,7 +57,7 @@ describe('Enemies, death and lives', () => {
     const { game, step } = setup(WALKER_ROOM, ['ENEMIES', 'DEATH', 'SFX'], { sound });
     step(120);
     expect(game.deathT).not.toBeNull();
-    expect(sound).toHaveBeenCalledWith('die');
+    expect(sound).toHaveBeenCalledWith('die', expect.any(Number));
     step(Math.ceil(DEATH_TIME / STEP) + 1);
     expect(game.deathT).toBeNull();
     expect(game.player.feetX).toBe(game.level.spawn.x);

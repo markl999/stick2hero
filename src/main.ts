@@ -1,3 +1,4 @@
+import { VIEW_W } from './config';
 import { AudioEngine } from './core/audio';
 import { FeatureRegistry } from './core/features';
 import { Input } from './core/input';
@@ -48,7 +49,18 @@ async function boot(): Promise<void> {
       features,
       level: parseLevel(ERA_LEVELS[index]),
       hooks: {
-        sound: (name) => (name === 'beep' ? audio.beep() : audio.sfx(name)),
+        sound: (name, x) => {
+          if (name === 'beep') return audio.beep();
+          // SAMPLES + STEREO: pan by where the sound is relative to the middle of the screen.
+          const stereo = features.has('SAMPLES_STEREO');
+          const offset = x === undefined ? 0 : (x - (game.camera.x + VIEW_W / 2)) / (VIEW_W / 2);
+          const distance = Math.abs(offset);
+          audio.sfx(name, {
+            pan: stereo ? Math.max(-1, Math.min(1, offset)) : 0,
+            rich: stereo,
+            volume: name === 'step' ? Math.max(0.15, 1 - distance / 3) * 0.7 : 1,
+          });
+        },
         save: () => persist(),
       },
       score,

@@ -98,3 +98,27 @@ export class Switch {
     this.box = { x: cx - 5, y: cy - 5, w: 10, h: 10 };
   }
 }
+
+// --- NPCs (Era 3) ----------------------------------------------------------------------
+
+export const TALK_RANGE = 24;
+
+export class Npc {
+  talked = false;
+
+  constructor(
+    /** The grid character that placed it; keys its dialogue and its look. */
+    readonly id: string,
+    /** Feet position. */
+    readonly x: number,
+    readonly y: number,
+    readonly pages: string[],
+  ) {}
+}
+
+/** An open conversation: which page, and how much of it has typed out. */
+export interface Dialogue {
+  npc: Npc;
+  page: number;
+  chars: number;
+}

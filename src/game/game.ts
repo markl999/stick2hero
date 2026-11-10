@@ -4,8 +4,19 @@ import type { ActionState } from '../core/input';
 import { overlaps } from '../world/physics';
 import { Tile, type ParsedLevel, type TileMap } from '../world/tilemap';
 import { Camera } from './camera';
-import { BlockBoss, FlickerBoss, Walker } from './enemies';
-import { Bomb, Flag, Pebble, PEBBLE_FORWARD, PEBBLE_UP, Switch } from './props';
+import { BlockBoss, FlickerBoss, Knight, Walker } from './enemies';
+import {
+  Bomb,
+  Flag,
+  Npc,
+  Pebble,
+  PEBBLE_FORWARD,
+  PEBBLE_UP,
+  Switch,
+  TALK_RANGE,
+  type Dialogue,
+} from './props';
+import { Warden } from './warden';
 import { Pickup } from './pickup';
 import { Player, type Bounds } from './player';
 
@@ -26,6 +37,9 @@ export const RESPAWN_INVULNERABLE = 1.5;
 export const BOSS_INTRO_TIME = 1.8;
 export const THROW_COOLDOWN = 0.35;
 export const MAX_PEBBLES = 3;
+export const SCORE_KNIGHT = 300;
+/** Characters per second for typed-out dialogue. */
+export const DIALOGUE_SPEED = 45;
 
 /** Era 0 has no boss: it ends when this feature's moment has played out. */
 export const ERA0_EXIT_FEATURE: FeatureId = 'FRAME_RATE';
@@ -56,14 +70,22 @@ export type SoundName =
   | 'bossDie'
   | 'throw'
   | 'switch'
-  | 'flag';
+  | 'flag'
+  | 'swing'
+  | 'clang'
+  | 'step'
+  | 'slam'
+  | 'dash'
+  | 'talk'
+  | 'save';
 
 /** Things the game needs the outside world (scenes) to do. */
 export type GameRequest = 'eraComplete' | 'gameOver' | 'title';
 
 /** Side effects the game asks for. Kept as an interface so tests can run headless. */
 export interface GameHooks {
-  sound?(name: SoundName): void;
+  /** `x` is where in the world the sound came from (for stereo panning). */
+  sound?(name: SoundName, x?: number): void;
   /** Called after anything that should be persisted (a pickup, a checkpoint). */
   save?(): void;
 }
@@ -92,6 +114,12 @@ export class Game {
   readonly boss: BlockBoss | null;
   /** Era 2's boss. */
   readonly flicker: FlickerBoss | null;
+  /** Era 3's boss. */
+  readonly warden: Warden | null;
+  readonly knights: Knight[];
+  readonly npcs: Npc[];
+  /** The open conversation, if any (the game pauses while it's open). */
+  dialogue: Dialogue | null = null;
   readonly pebbles: Pebble[] = [];
   readonly bombs: Bomb[] = [];
   readonly flags: Flag[];
@@ -138,6 +166,14 @@ export class Game {
     this.flicker = flicker
       ? new FlickerBoss(flicker.x, flicker.y, this.floorBelow(flicker.x, flicker.y))
       : null;
+    const warden = this.level.entities.find((e) => e.kind === 'warden');
+    this.warden = warden ? new Warden(warden.x, warden.y) : null;
+    this.knights = this.level.entities
+      .filter((e) => e.kind === 'knight')
+      .map((e) => new Knight(e.x, e.y));
+    this.npcs = this.level.entities
+      .filter((e) => e.kind === 'npc' && e.id)
+      .map((e) => new Npc(e.id!, e.x, e.y, this.level.dialogue[e.id!] ?? []));
     this.flags = this.level.entities
       .filter((e) => e.kind === 'flag')
       .map((e) => new Flag(e.x, e.y));
@@ -186,6 +222,13 @@ export class Game {
         if (feature === 'COLOUR_16' && this.flicker?.state === 'dead') this.request = 'eraComplete';
       }
     }
+    // Talking pauses the game.
+    if (this.updateDialogue(dt, input)) {
+      this.player.prevX = this.player.box.x;
+      this.player.prevY = this.player.box.y;
+      this.camera.update(this.player.feetX, this.playerCenterY);
+      return;
+    }
     const frozen = this.moment !== null && this.moment.t < MOMENT_HITSTOP;
 
     if (frozen) {
@@ -206,7 +249,9 @@ export class Game {
     if (!frozen) {
       this.updateProps(dt);
       this.updateEnemies(dt);
+      this.updateKnights(dt);
       this.updateFlicker(dt);
+      this.updateWarden(dt);
     }
 
     this.camera.update(this.player.feetX, this.playerCenterY);
@@ -225,6 +270,7 @@ export class Game {
         jumpPressed: input.wasPressed('jump'),
         jumpHeld: input.isDown('jump'),
         attackPressed: input.wasPressed('attack'),
+        dashPressed: input.wasPressed('dash'),
       },
       {
         moveLeft: f.has('LEFT'),
@@ -232,6 +278,8 @@ export class Game {
         grab: f.has('ARMS'),
         punch: f.has('PUNCH'),
         wallJump: f.has('HANDS_FEET'),
+        sword: f.has('SWORD'),
+        dash: f.has('DASH'),
       },
       this.map,
       this.bounds(),
@@ -239,6 +287,8 @@ export class Game {
     if (events.jumped) this.play('jump');
     if (events.landed) this.play('land');
     if (events.punched) this.play('punch');
+    if (events.swung) this.play('swing');
+    if (events.dashed) this.play('dash');
 
     // THROW: forward in an arc, or straight up while holding up.
     this.throwCooldown = Math.max(0, this.throwCooldown - dt);
@@ -272,8 +322,9 @@ export class Game {
     if (!this.enemiesActive) return;
     const player = this.player;
     const alive = this.deathT === null;
-    const punch = alive ? player.punchBox() : null;
-    const canHurt = alive && this.features.has('DEATH') && this.invulnerableT <= 0;
+    const punch = alive ? player.attackBox() : null;
+    const canHurt =
+      alive && this.features.has('DEATH') && this.invulnerableT <= 0 && !this.player.dashing;
 
     for (const walker of this.walkers) {
       if (walker.gone) continue;
@@ -305,7 +356,7 @@ export class Game {
     }
     if (boss.update(dt, this.map, player.feetX)) this.play('bossLand');
     if (punch && overlaps(punch, boss.box)) {
-      const result = boss.hit(player.punchId);
+      const result = boss.hit(player.attackId);
       if (result === 'damaged') {
         this.score += SCORE_BOSS_HIT;
         this.play('bossHit');
@@ -350,7 +401,11 @@ export class Game {
       }
     }
 
-    const canHurt = this.deathT === null && this.features.has('DEATH') && this.invulnerableT <= 0;
+    const canHurt =
+      this.deathT === null &&
+      this.features.has('DEATH') &&
+      this.invulnerableT <= 0 &&
+      !this.player.dashing;
     for (const bomb of this.bombs) {
       if (bomb.alive && canHurt && overlaps(bomb.box, this.player.box)) {
         bomb.alive = false;
@@ -391,7 +446,8 @@ export class Game {
       }
     }
 
-    const canHurt = alive && this.features.has('DEATH') && this.invulnerableT <= 0;
+    const canHurt =
+      alive && this.features.has('DEATH') && this.invulnerableT <= 0 && !this.player.dashing;
     if (canHurt && boss.harmful && overlaps(player.box, boss.box)) this.die();
 
     if (boss.state === 'dead' && !this.bossFinished) {
@@ -406,6 +462,137 @@ export class Game {
         this.request = 'eraComplete';
       }
     }
+  }
+
+  private updateKnights(dt: number): void {
+    if (!this.enemiesActive || this.knights.length === 0) return;
+    const player = this.player;
+    const alive = this.deathT === null;
+    const attack = alive ? player.attackBox() : null;
+    const canHurt =
+      alive && this.features.has('DEATH') && this.invulnerableT <= 0 && !player.dashing;
+    const stereo = this.features.has('SAMPLES_STEREO');
+    const earshot = this.camera.x + VIEW_W / 2;
+
+    for (const knight of this.knights) {
+      if (knight.gone) continue;
+      const step = knight.update(dt, this.map, player.feetX, player.feetY);
+      // Footsteps carry about a screen and a half: you hear them before you see them.
+      if (step && stereo && Math.abs(knight.box.x - earshot) < VIEW_W * 1.5) {
+        this.hooks.sound?.('step', knight.box.x);
+      }
+      if (!knight.alive) continue;
+
+      for (const pb of this.pebbles) {
+        if (pb.alive && overlaps(pb.box, knight.box)) {
+          pb.alive = false;
+          this.play('clank', knight.box.x);
+        }
+      }
+      if (attack && overlaps(attack, knight.box)) {
+        const result = knight.hit(player.attackId, player.feetX, player.swinging);
+        if (result === 'damaged') this.play('clang', knight.box.x);
+        else if (result === 'killed') {
+          this.score += SCORE_KNIGHT;
+          this.play('enemyDie', knight.box.x);
+        } else if (result === 'blocked') this.play('clank', knight.box.x);
+      }
+      if (canHurt && knight.flinchT <= 0 && overlaps(player.box, knight.box)) this.die();
+    }
+  }
+
+  private updateWarden(dt: number): void {
+    const boss = this.warden;
+    if (!boss || !this.enemiesActive) return;
+    const player = this.player;
+    const alive = this.deathT === null;
+
+    if (boss.state === 'waiting' && alive && player.box.x > boss.arenaX + 8) {
+      boss.activate();
+      this.bossIntroT = 0;
+    }
+    const events = boss.update(dt, player.feetX);
+    if (events.slam) this.play('slam', player.feetX);
+    if (events.rock) this.bombs.push(new Bomb(events.rock.x, events.rock.y));
+
+    const attack = alive ? player.attackBox() : null;
+    if (attack) {
+      for (const fist of boss.fists) {
+        if (overlaps(attack, fist.box)) this.bossHitResult(fist.hit(player.attackId), fist.box.x);
+      }
+      if (overlaps(attack, boss.head)) {
+        this.bossHitResult(boss.hitHead(player.attackId), boss.head.x);
+      }
+    }
+
+    const canHurt =
+      alive && this.features.has('DEATH') && this.invulnerableT <= 0 && !player.dashing;
+    if (canHurt) {
+      const crushed =
+        boss.fists.some((f) => f.harmful && overlaps(player.box, f.box)) ||
+        (boss.headHarmful && overlaps(player.box, boss.head));
+      if (crushed) this.die();
+    }
+    if (boss.state === 'dead' && !this.bossFinished) {
+      this.bossFinished = true;
+      this.request = 'eraComplete';
+    }
+  }
+
+  private bossHitResult(result: 'damaged' | 'killed' | 'blocked' | 'ignored', x: number): void {
+    if (result === 'damaged') {
+      this.score += SCORE_BOSS_HIT;
+      this.play('bossHit', x);
+    } else if (result === 'killed') {
+      this.score += SCORE_BOSS_HIT * 2;
+      this.play('bossDie', x);
+      if (this.warden?.state === 'dying') {
+        this.score += SCORE_BOSS;
+        this.bombs.length = 0;
+      }
+    } else if (result === 'blocked') {
+      this.play('clank', x);
+    }
+  }
+
+  /**
+   * NPCs + DIALOGUE: press up next to someone to talk. Returns true while a conversation
+   * is open (the rest of the game pauses). Jump, attack or up turns the page.
+   */
+  private updateDialogue(dt: number, input: ActionState): boolean {
+    const open = this.dialogue;
+    if (open) {
+      const turnPage =
+        input.wasPressed('jump') || input.wasPressed('attack') || input.wasPressed('up');
+      const text = open.npc.pages[open.page] ?? '';
+      const before = Math.floor(open.chars);
+      open.chars = Math.min(text.length, open.chars + DIALOGUE_SPEED * dt);
+      if (Math.floor(open.chars) > before && Math.floor(open.chars) % 3 === 0) this.play('talk');
+      if (turnPage) {
+        if (open.chars < text.length) open.chars = text.length;
+        else if (open.page + 1 < open.npc.pages.length) {
+          open.page++;
+          open.chars = 0;
+        } else {
+          this.dialogue = null;
+        }
+      }
+      return true;
+    }
+    if (!input.wasPressed('up') || this.deathT !== null) return false;
+    const npc = this.talkableNpc;
+    if (!npc || !this.player.onGround || npc.pages.length === 0) return false;
+    npc.talked = true;
+    this.dialogue = { npc, page: 0, chars: 0 };
+    return true;
+  }
+
+  /** The NPC you could talk to right now (for the "talk" prompt). */
+  get talkableNpc(): Npc | null {
+    if (!this.features.has('NPCS') || this.dialogue) return null;
+    const p = this.player;
+    const near = (n: Npc) => Math.abs(n.x - p.feetX) < TALK_RANGE && Math.abs(n.y - p.feetY) < 8;
+    return this.npcs.find(near) ?? null;
   }
 
   /** A switch opens every door on its screen. */
@@ -447,7 +634,7 @@ export class Game {
     }
     this.player.teleport(this.checkpoint.x, this.checkpoint.y);
     this.invulnerableT = RESPAWN_INVULNERABLE;
-    for (const boss of [this.boss, this.flicker]) {
+    for (const boss of [this.boss, this.flicker, this.warden]) {
       if (boss && !boss.defeated) {
         boss.reset();
         this.bossIntroT = null;
@@ -486,14 +673,14 @@ export class Game {
    * Sound policy: before SFX the only sound in the game is BEEP's jump beep. After SFX,
    * everything has its own sound.
    */
-  private play(name: SoundName): void {
-    if (this.features.has('SFX')) this.hooks.sound?.(name);
-    else if (name === 'jump' && this.features.has('BEEP')) this.hooks.sound?.('beep');
+  private play(name: SoundName, x = this.player.feetX): void {
+    if (this.features.has('SFX')) this.hooks.sound?.(name, x);
+    else if (name === 'jump' && this.features.has('BEEP')) this.hooks.sound?.('beep', x);
   }
 
   /** The boss currently fighting, if any: its arena locks the camera and the player in. */
   get activeArenaX(): number | null {
-    for (const boss of [this.boss, this.flicker]) {
+    for (const boss of [this.boss, this.flicker, this.warden]) {
       if (boss && boss.state !== 'waiting' && boss.state !== 'dead') return boss.arenaX;
     }
     return null;

@@ -193,11 +193,11 @@ export class BlockBoss {
     }
   }
 
-  hit(punchId: number): BossHit {
-    if (punchId === this.lastPunchId || this.defeated || this.state === 'waiting') {
+  hit(attackId: number): BossHit {
+    if (attackId === this.lastPunchId || this.defeated || this.state === 'waiting') {
       return 'ignored';
     }
-    this.lastPunchId = punchId;
+    this.lastPunchId = attackId;
     if (this.state !== 'dazed') return 'blocked';
     this.hp--;
     this.hitFlash = 0.15;
@@ -364,5 +364,108 @@ export class FlickerBoss {
     this.box.x += (dx / dist) * step;
     this.box.y += (dy / dist) * step;
     return false;
+  }
+}
+
+// --- Knights (Era 3) ------------------------------------------------------------------
+
+export const KNIGHT_W = 14;
+export const KNIGHT_H = 26;
+export const KNIGHT_HP = 3;
+const KNIGHT_SPEED = 26;
+const KNIGHT_CHARGE_SPEED = 75;
+const KNIGHT_SIGHT = 90;
+const KNIGHT_FLINCH = 0.3;
+const KNIGHT_KNOCKBACK = 40;
+const KNIGHT_STEP_EVERY = 0.42;
+
+export type KnightHit = 'damaged' | 'killed' | 'blocked' | 'ignored';
+
+/**
+ * Armoured knights: too tough to punch (it clanks off), three sword hits to beat. They
+ * plod back and forth and charge when they see you. Their footsteps carry: with SAMPLES
+ * + STEREO you can hear them coming from off-screen.
+ */
+export class Knight {
+  readonly box: Box;
+  dir: 1 | -1 = -1;
+  hp = KNIGHT_HP;
+  alive = true;
+  deadT = 0;
+  flinchT = 0;
+  charging = false;
+  prevX: number;
+  prevY: number;
+  private vy = 0;
+  private knockback = 0;
+  private lastHit = -1;
+  private stepT = 0;
+
+  constructor(feetX: number, feetY: number) {
+    this.box = { x: feetX - KNIGHT_W / 2, y: feetY - KNIGHT_H, w: KNIGHT_W, h: KNIGHT_H };
+    this.prevX = this.box.x;
+    this.prevY = this.box.y;
+  }
+
+  get gone(): boolean {
+    return !this.alive && this.deadT >= WALKER_DEATH_TIME * 1.6;
+  }
+
+  /** Returns true on steps that make a footstep sound. */
+  update(dt: number, map: WalkerMap, playerX: number, playerFeetY: number): boolean {
+    this.prevX = this.box.x;
+    this.prevY = this.box.y;
+    if (!this.alive) {
+      this.deadT += dt;
+      return false;
+    }
+    this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+    let vx: number;
+    if (this.flinchT > 0) {
+      this.flinchT -= dt;
+      vx = this.knockback;
+      this.knockback *= 0.85;
+    } else {
+      // Charge when the player is ahead, close and on the same level.
+      const dx = playerX - (this.box.x + this.box.w / 2);
+      const sameLevel = Math.abs(playerFeetY - (this.box.y + this.box.h)) < 6;
+      this.charging = sameLevel && Math.abs(dx) < KNIGHT_SIGHT && Math.sign(dx) === this.dir;
+      vx = this.dir * (this.charging ? KNIGHT_CHARGE_SPEED : KNIGHT_SPEED);
+    }
+    const hitWall = moveX(this.box, vx * dt, map);
+    const hitY = moveY(this.box, this.vy * dt, map);
+    const onGround = hitY && this.vy > 0;
+    if (hitY) this.vy = 0;
+    if (this.flinchT <= 0) {
+      const aheadX = this.dir > 0 ? this.box.x + this.box.w + 1 : this.box.x - 1;
+      const tx = Math.floor(aheadX / TILE);
+      const below = Math.floor((this.box.y + this.box.h + 1) / TILE);
+      const level = Math.floor((this.box.y + this.box.h - 1) / TILE);
+      const edge = onGround && (!map.isSolid(tx, below) || map.tileAt(tx, level) === Tile.Spikes);
+      if (hitWall || edge) this.dir = this.dir > 0 ? -1 : 1;
+    }
+
+    this.stepT += dt * (this.charging ? 2 : 1);
+    if (onGround && this.stepT >= KNIGHT_STEP_EVERY) {
+      this.stepT = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /** Sword hits damage; punches and pebbles clank off the armour. */
+  hit(attackId: number, fromX: number, sword: boolean): KnightHit {
+    if (!this.alive || attackId === this.lastHit) return 'ignored';
+    this.lastHit = attackId;
+    if (!sword) return 'blocked';
+    this.hp--;
+    this.flinchT = KNIGHT_FLINCH;
+    this.knockback = Math.sign(this.box.x + this.box.w / 2 - fromX) * KNIGHT_KNOCKBACK;
+    if (this.hp <= 0) {
+      this.alive = false;
+      this.deadT = 0;
+      return 'killed';
+    }
+    return 'damaged';
   }
 }

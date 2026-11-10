@@ -18,7 +18,9 @@ export class GameScene implements Scene {
   ) {}
 
   resolution(): Resolution {
-    return this.game.level.era === 0 ? RESOLUTIONS.ERA0 : RESOLUTIONS.ERA1;
+    const era = this.game.level.era;
+    if (era === 0) return RESOLUTIONS.ERA0;
+    return era >= 3 ? RESOLUTIONS.ERA3 : RESOLUTIONS.ERA1;
   }
 
   renderCap(): number | null {

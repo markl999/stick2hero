@@ -39,6 +39,17 @@ const WALL_COYOTE = 0.08;
 /** ANIMATION: how long the landing squash lasts. */
 export const LAND_SQUASH_TIME = 0.12;
 
+/** DASH: a quick horizontal burst; gravity pauses and you can pass through enemies. */
+export const DASH_SPEED = 300;
+export const DASH_TIME = 0.17;
+const DASH_COOLDOWN = 0.45;
+
+/** SWORD: up to three swings in a row (slash, slash, thrust). */
+export const SWING_TIME = 0.16;
+const SWING_GAP = 0.06;
+const COMBO_WINDOW = 0.35;
+const COMBO_RECOVERY = 0.4;
+
 /** PUNCH: a short jab in front of you. */
 export const PUNCH_TIME = 0.15;
 export const PUNCH_COOLDOWN = 0.3;
@@ -51,6 +62,7 @@ export interface PlayerControls {
   jumpPressed: boolean;
   jumpHeld: boolean;
   attackPressed: boolean;
+  dashPressed?: boolean;
 }
 
 /** What the current feature set allows. Inputs are never gated, abilities are. */
@@ -60,6 +72,8 @@ export interface PlayerAbilities {
   grab: boolean;
   punch: boolean;
   wallJump: boolean;
+  sword?: boolean;
+  dash?: boolean;
 }
 
 export interface Bounds {
@@ -72,6 +86,8 @@ export interface PlayerEvents {
   landed: boolean;
   grabbed: boolean;
   punched: boolean;
+  swung: boolean;
+  dashed: boolean;
 }
 
 export type PlayerState = 'normal' | 'hang' | 'climb';
@@ -85,10 +101,16 @@ export class Player {
   state: PlayerState = 'normal';
   /** 0..1 progress through a climb. */
   climbT = 0;
-  /** Seconds left on the current punch (0 = not punching). */
+  /** Seconds left on the current punch or swing (0 = not attacking). */
   punchT = 0;
-  /** Increments with every punch, so a target is only hit once per punch. */
-  punchId = 0;
+  /** Increments with every punch or swing, so a target is only hit once per attack. */
+  attackId = 0;
+  /** The current attack is a sword swing (vs a punch). */
+  swinging = false;
+  /** Which swing of the combo: 0 slash, 1 back-slash, 2 thrust. */
+  swingStage = 0;
+  /** Seconds left on the current dash. */
+  dashT = 0;
   /** Distance walked on the ground (drives the walk cycle). */
   walkDistance = 0;
   /** Counts down after landing (drives the landing squash). */
@@ -103,6 +125,9 @@ export class Player {
   private buffer = 0;
   private regrab = 0;
   private punchCooldown = 0;
+  private comboT = 0;
+  private dashCooldown = 0;
+  private airDash = true;
   private wallCoyote = 0;
   private wallDir: 1 | -1 = 1;
   private pushT = 0;
@@ -137,10 +162,21 @@ export class Player {
     this.punchT = 0;
   }
 
-  /** The punch's hit box while a punch is active, otherwise null. */
-  punchBox(): Box | null {
+  get dashing(): boolean {
+    return this.dashT > 0;
+  }
+
+  /** The hit box of the current punch or sword swing, otherwise null. */
+  attackBox(): Box | null {
     if (this.punchT <= 0) return null;
     const b = this.box;
+    if (this.swinging) {
+      // Slashes sweep a tall arc; the thrust reaches further but narrower.
+      const thrust = this.swingStage === 2;
+      const reach = thrust ? 32 : 26;
+      const x = this.facing > 0 ? b.x + b.w - 2 : b.x + 2 - reach;
+      return thrust ? { x, y: b.y + 10, w: reach, h: 9 } : { x, y: b.y - 2, w: reach, h: 24 };
+    }
     const x = this.facing > 0 ? b.x + b.w : b.x - PUNCH_REACH;
     return { x, y: b.y + 8, w: PUNCH_REACH, h: 10 };
   }
@@ -157,10 +193,20 @@ export class Player {
     this.regrab = Math.max(0, this.regrab - dt);
     this.punchT = Math.max(0, this.punchT - dt);
     this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    this.comboT = Math.max(0, this.comboT - dt);
+    this.dashT = Math.max(0, this.dashT - dt);
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     this.landSquash = Math.max(0, this.landSquash - dt);
     this.wallCoyote = Math.max(0, this.wallCoyote - dt);
     this.pushT = Math.max(0, this.pushT - dt);
-    const events: PlayerEvents = { jumped: false, landed: false, grabbed: false, punched: false };
+    const events: PlayerEvents = {
+      jumped: false,
+      landed: false,
+      grabbed: false,
+      punched: false,
+      swung: false,
+      dashed: false,
+    };
 
     if (this.state === 'climb') {
       this.updateClimb(dt, events);
@@ -180,12 +226,36 @@ export class Player {
       if (dir !== 0) this.facing = dir > 0 ? 1 : -1;
     }
 
-    if (controls.attackPressed && abilities.punch && this.punchCooldown <= 0) {
+    if (controls.attackPressed && abilities.sword && this.punchCooldown <= 0) {
+      // Swings chain into a combo if you keep pressing; the third one is a thrust.
+      this.swingStage = this.comboT > 0 ? (this.swingStage + 1) % 3 : 0;
+      this.swinging = true;
+      this.punchT = SWING_TIME;
+      this.punchCooldown = this.swingStage === 2 ? COMBO_RECOVERY : SWING_TIME + SWING_GAP;
+      this.comboT = this.swingStage === 2 ? 0 : COMBO_WINDOW;
+      this.attackId++;
+      events.swung = true;
+    } else if (controls.attackPressed && abilities.punch && this.punchCooldown <= 0) {
+      this.swinging = false;
       this.punchT = PUNCH_TIME;
       this.punchCooldown = PUNCH_COOLDOWN;
-      this.punchId++;
+      this.attackId++;
       events.punched = true;
     }
+
+    if (this.onGround) this.airDash = true;
+    if (
+      controls.dashPressed &&
+      abilities.dash &&
+      this.dashCooldown <= 0 &&
+      (this.onGround || this.airDash)
+    ) {
+      this.dashT = DASH_TIME;
+      this.dashCooldown = DASH_COOLDOWN;
+      if (!this.onGround) this.airDash = false;
+      events.dashed = true;
+    }
+    if (this.dashT > 0) this.vx = this.facing * DASH_SPEED;
 
     // Jump with buffering (press slightly early) and coyote time (press slightly late).
     this.buffer =
@@ -211,7 +281,8 @@ export class Player {
       this.vy = -JUMP_SPEED * JUMP_CUT;
     }
 
-    this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+    // Gravity pauses during a dash.
+    this.vy = this.dashT > 0 ? 0 : Math.min(this.vy + GRAVITY * dt, MAX_FALL);
 
     const hitWall = moveX(this.box, this.vx * dt, map);
     if (hitWall) this.vx = 0;

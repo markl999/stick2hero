@@ -18,10 +18,25 @@ import {
 import { PICKUP_SIZE } from '../../game/pickup';
 import { LAND_SQUASH_TIME } from '../../game/player';
 import type { Flag, Switch } from '../../game/props';
+import { WARDEN_MAX_HP } from '../../game/warden';
 import { SPIKE_HEIGHT, Tile } from '../../world/tilemap';
 import { GLYPH_H, textWidth } from '../font3x5';
 import type { PixelCanvas } from '../pixelCanvas';
 import { stickPose } from '../stickman';
+import {
+  dashGhosts,
+  drawDialogue,
+  drawFace,
+  drawKnight,
+  drawNpc,
+  drawOutfit,
+  drawParallax,
+  drawSaveIcon,
+  drawSword,
+  drawTalkPrompt,
+  drawWarden,
+  expressionFor,
+} from './era3Draw';
 
 /**
  * The low-res pixel eras, one renderer with a palette per stage:
@@ -29,7 +44,7 @@ import { stickPose } from '../stickman';
  *   Era 1 (ARCADE)  black screen, filled phosphor-green pixels, bricks, a bold stick man
  *   Era 2 (8-BIT)   the same, until COLOUR (4) floods in, then COLOUR (16)
  */
-interface PixelStyle {
+export interface PixelStyle {
   paper: string;
   tiles: string;
   /** Brick mortar lines. */
@@ -51,6 +66,10 @@ interface PixelStyle {
   text: string;
   /** Filled shapes and 2px lines (Era 1+) vs 1px outlines (Era 0). */
   filled: boolean;
+  /** Era 3's richer look: bevelled stone, layered backgrounds, coloured details. */
+  rich?: boolean;
+  bevel?: { light: string; dark: string };
+  parallax?: boolean;
 }
 
 const ERA0: PixelStyle = {
@@ -128,8 +147,21 @@ const COLOUR16: PixelStyle = {
   filled: true,
 };
 
+/** PARALLAX (Era 3): 256-colour gradients, bevelled stone and layered backgrounds. */
+const RICH: PixelStyle = {
+  ...COLOUR16,
+  paper: '#1b1f5e',
+  tiles: '#7d7266',
+  mortar: '#574e45',
+  grass: '#4caf50',
+  bevel: { light: '#a99d8e', dark: '#463e36' },
+  rich: true,
+  parallax: true,
+};
+
 function baseStyle(game: Game, colour: 0 | 4 | 16): PixelStyle {
   if (game.level.era === 0) return ERA0;
+  if (game.level.era >= 3 && game.features.has('PARALLAX')) return RICH;
   if (colour === 16) return COLOUR16;
   if (colour === 4) return COLOUR4;
   return MONO;
@@ -145,15 +177,17 @@ function colourLevel(game: Game): 0 | 4 | 16 {
 function inverted(style: PixelStyle): PixelStyle {
   const out = { ...style };
   for (const key of Object.keys(out) as (keyof PixelStyle)[]) {
-    if (key !== 'filled' && key !== 'grass') (out[key] as string) = style.paper;
+    if (typeof out[key] === 'string') (out[key] as string) = style.paper;
   }
   out.paper = style.text;
   out.grass = null;
+  out.bevel = undefined;
+  out.parallax = false;
   return out;
 }
 
 /** Everything the drawing helpers need for one frame. */
-interface Frame {
+export interface Frame {
   p: PixelCanvas;
   game: Game;
   style: PixelStyle;
@@ -200,14 +234,23 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   });
   const f = frame(style);
 
+  const parallaxIntro = moment?.feature === 'PARALLAX' ? t : null;
   const world = (fr: Frame) => {
     p.clear(fr.style.paper);
+    if (fr.style.parallax) drawParallax(fr, parallaxIntro);
+    if (game.enemiesActive && game.warden) drawWarden(fr, game.warden);
     drawTiles(fr);
     drawFlags(fr);
     drawSwitches(fr);
     drawPickups(fr);
+    if (game.features.has('NPCS')) {
+      for (const npc of game.npcs) if (onScreen(fr, npc.x, npc.y, TILE * 2)) drawNpc(fr, npc);
+    }
     if (game.enemiesActive) {
       for (const walker of game.walkers) drawWalker(fr, walker);
+      for (const knight of game.knights) {
+        if (onScreen(fr, knight.box.x, knight.box.y, TILE * 2)) drawKnight(fr, knight);
+      }
       if (game.boss) drawBlock(fr, game.boss);
       if (game.flicker) drawFlicker(fr, game.flicker);
     }
@@ -227,8 +270,12 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
     world(f);
   }
 
+  const npc = game.talkableNpc;
+  if (npc) drawTalkPrompt(f, npc);
   drawHud(f);
+  if (moment?.feature === 'SAVE_GAME') drawSaveIcon(f, moment.t);
   drawMoment(f);
+  if (game.dialogue) drawDialogue(f, game.dialogue);
 }
 
 function colourWave(f: Frame, moment: Game['moment']): { x: number; y: number; r: number } | null {
@@ -307,6 +354,15 @@ function drawTiles(f: Frame): void {
         p.hline(left, right, bottom);
         p.vline(Math.round((left + right) / 2), top, mid);
         p.vline(right, mid, bottom);
+        if (style.bevel && !hot) {
+          // Stone blocks catch the light on top and left.
+          p.color(style.bevel.light);
+          p.hline(left, right, top);
+          p.vline(left, top, bottom);
+          p.color(style.bevel.dark);
+          p.hline(left, right, bottom - 1);
+          p.vline(right - 1, top, bottom);
+        }
         if (style.grass && !hot && !map.isSolidForDraw(tx, ty - 1)) {
           p.color(style.grass);
           p.rect(left, top, right - left + 1, Math.max(2, Math.round((bottom - top) * 0.2)));
@@ -558,14 +614,39 @@ function drawPlayer(f: Frame): void {
         }
       : undefined,
   });
-  p.color(style.player);
-  for (const [x0, y0, x1, y1] of pose.segments) {
+  const dead = deathT !== null;
+  const segment = ([x0, y0, x1, y1]: readonly number[]) =>
     stroke(f, X(px + x0), Y(py + y0), X(px + x1), Y(py + y1));
+
+  // DASH: afterimages trailing behind.
+  for (const offset of dashGhosts(player)) {
+    p.color(style.rich ? '#7fd3ff' : style.text);
+    const gx = offset * player.facing;
+    for (const [x0, y0, x1, y1] of pose.segments) {
+      p.line(X(px + gx + x0), Y(py + y0), X(px + gx + x1), Y(py + y1));
+    }
+  }
+
+  p.color(style.player);
+  if (game.features.has('OUTFIT') && !dead) {
+    // Body under the tunic: legs, then the tunic, then arms over it.
+    pose.segments.slice(1, 3).forEach(segment);
+    drawOutfit(f, px, py, pose);
+    p.color(style.player);
+    pose.segments.slice(3).forEach(segment);
+  } else {
+    pose.segments.forEach(segment);
   }
   const hx = X(px + pose.head.x);
   const hy = Y(py + pose.head.y);
   if (style.filled) p.disc(hx, hy, pose.head.r * s);
   else p.circle(hx, hy, pose.head.r * s);
+  if (game.features.has('FACE') && style.filled && !dead) {
+    drawFace(f, hx, hy, pose.head.r * s, player.facing, expressionFor(game));
+  }
+  if (game.features.has('SWORD') && !dead && player.state === 'normal') {
+    drawSword(f, px, py, player);
+  }
 
   // HANDS & FEET: little fists and shoes.
   if (game.features.has('HANDS_FEET')) {
@@ -608,9 +689,9 @@ function drawHud(f: Frame): void {
   }
 
   // Bosses: name card when they wake, then health pips.
-  const boss = game.enemiesActive ? (game.boss ?? game.flicker) : null;
+  const boss = game.enemiesActive ? (game.boss ?? game.flicker ?? game.warden) : null;
   if (boss && boss.state !== 'waiting' && boss.state !== 'dead') {
-    const maxHp = game.boss ? BOSS_HP : FLICKER_HP;
+    const maxHp = game.boss ? BOSS_HP : game.flicker ? FLICKER_HP : WARDEN_MAX_HP;
     const pip = 3 * fs;
     const total = maxHp * (pip + fs) - fs;
     const x0 = Math.round(p.width / 2 - total / 2);
@@ -622,7 +703,7 @@ function drawHud(f: Frame): void {
     }
     if (game.bossIntroT !== null && game.bossIntroT < BOSS_INTRO_TIME) {
       p.color(style.text);
-      const name = game.boss ? 'THE BLOCK' : 'FLICKER';
+      const name = game.boss ? 'THE BLOCK' : game.flicker ? 'FLICKER' : 'THE WARDEN';
       p.textCentered(name, p.width / 2, Math.round(p.height * 0.18), fs * 2);
     }
   }

@@ -256,7 +256,7 @@ Multiplayer, true 3D, procedural levels, monetisation or ads, mobile store build
 | M0 ✅ | Foundations               | Vite + Pixi + TypeScript running. Fixed-timestep loop, input, feature registry, low-res render target, AABB tile physics. The stick man walks and jumps in a test room. |
 | M1 ✅ | Era 0 + Tape Loader       | The full intro and BOOT chapter, all 7 features with their moments, autosave.                                                                                           |
 | M2 ✅ | Vertical slice (Eras 0–2) | Enemies, death, lives, colour, scrolling, chiptune, two bosses. **Playtest with 3–5 people.**                                                                           |
-| M3    | Era 3                     | Parallax, samples, face, NPCs, sword, dash, boss.                                                                                                                       |
+| M3 ✅ | Era 3                     | Parallax, samples, face, NPCs, sword, dash, boss.                                                                                                                       |
 | M4    | Era 4                     | Transparency, particles, lighting, CD audio, cutscene, chase.                                                                                                           |
 | M5    | Era 5 + Finale            | HD, shadows, physics, cape, post-FX, Deprecator, ending.                                                                                                                |
 | M6    | Polish & ship             | Secrets, Feature Menu, accessibility, performance pass, public release.                                                                                                 |
@@ -305,6 +305,7 @@ The idea is in the same family as "the game evolves as you play" titles (e.g. _E
 | 6   | **PixiJS v8** + custom AABB physics.                                                                                                                                                                                                                                                  |
 | 7   | Players never lose features except during the Deprecator finale.                                                                                                                                                                                                                      |
 | 8   | Target length: 60–90 minutes.                                                                                                                                                                                                                                                         |
+| 9   | **DASH on Shift / L** (gamepad LB/RB/RT). THROW keeps Special (C/K, gamepad B). Talking to NPCs is ↑.                                                                                                                                                                                 |
 
 ### Still open (not blocking M0–M2)
 
@@ -313,5 +314,4 @@ The idea is in the same family as "the game evolves as you play" titles (e.g. _E
 | 9   | Music source for Era 4–5 (`CD AUDIO`, `ADAPTIVE MUSIC`): commission, licence, or self-made?                                      | M4          |
 | 10  | Hosting choice (Netlify / Vercel / GitHub Pages) and domain                                                                      | M2          |
 | 11  | Era 0 length: the M1 level plays in about 3–4 minutes against a ~10-minute target. Add screens, or accept a shorter opening era? | M2 playtest |
-| 12  | THROW took the Special button (K/C). Era 3's DASH needs a binding: double-tap a direction, Shift/L, or share Special?            | M3          |
-| 13  | Run the M2 playtest (3–5 people, Eras 0–2) and fold the findings in before M3.                                                   | Before M3   |
+| 13  | Playtest with 3–5 people (Eras 0–3, `?debug` has era-jump buttons) and fold the findings in.                                     | Before M4   |

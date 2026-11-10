@@ -3,7 +3,8 @@
  * Inputs are never gated here: features gate *abilities* in game logic, not devices.
  */
 
-export type Action = 'left' | 'right' | 'up' | 'down' | 'jump' | 'attack' | 'special' | 'pause';
+export type Action =
+  'left' | 'right' | 'up' | 'down' | 'jump' | 'attack' | 'special' | 'dash' | 'pause';
 
 /** What game logic reads. Kept minimal so tests can fake it. */
 export interface ActionState {
@@ -25,6 +26,9 @@ const KEYMAP: Record<string, Action[]> = {
   KeyX: ['attack'],
   KeyK: ['special'],
   KeyC: ['special'],
+  ShiftLeft: ['dash'],
+  ShiftRight: ['dash'],
+  KeyL: ['dash'],
   Escape: ['pause'],
 };
 
@@ -33,7 +37,9 @@ const PAD_BUTTONS: Record<number, Action[]> = {
   0: ['jump'], // A
   1: ['special'], // B
   2: ['attack'], // X
-  5: ['special'], // RB
+  4: ['dash'], // LB
+  5: ['dash'], // RB
+  7: ['dash'], // RT
   9: ['pause'], // Start
   12: ['up'],
   13: ['down'],

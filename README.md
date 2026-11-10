@@ -16,10 +16,11 @@ npm run build   # static build in dist/
 ```
 
 **Controls:** ← → / A D to move · Space / W / ↑ to jump (and climb, once you have arms) · ↓ to
-let go of a ledge · X / J to punch · C / K to throw (hold ↑ to throw upwards) · gamepad supported.
+let go of a ledge · X / J to punch (or swing a sword) · C / K to throw (hold ↑ to throw upwards) ·
+Shift / L to dash · ↑ to talk · gamepad supported.
 Each ability only works once you've collected it.
 
 ## Status
 
-M2 is done: the tape-loader intro and three playable eras. BOOT (Era 0), ARCADE (Era 1, with
-The Block) and 8-BIT (Era 2, with Flicker). Next: a playtest, then M3 (Era 3, 16-BIT).
+M3 is done: the tape-loader intro and four playable eras. BOOT, ARCADE (The Block), 8-BIT
+(Flicker) and 16-BIT (The Warden). Next: M4, Era 4 (32-BIT).

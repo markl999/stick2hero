@@ -120,7 +120,7 @@ describe('Game', () => {
     bot.input.pressed.add('jump');
     bot.step(1);
     expect(sound).toHaveBeenCalledTimes(1);
-    expect(sound).toHaveBeenCalledWith('beep');
+    expect(sound).toHaveBeenCalledWith('beep', expect.any(Number));
   });
 
   it('resumes from a saved checkpoint', () => {

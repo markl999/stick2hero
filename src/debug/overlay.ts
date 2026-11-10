@@ -20,7 +20,7 @@ export interface DebugDeps {
 
 const STYLE = `
   position: fixed; top: 8px; left: 8px; z-index: 10;
-  padding: 10px 12px; max-width: 260px;
+  padding: 10px 12px; max-width: 260px; max-height: calc(100vh - 16px); overflow-y: auto;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #e8e8e8; background: rgba(20, 20, 24, 0.88);
   border: 1px solid #444; border-radius: 6px; user-select: none;

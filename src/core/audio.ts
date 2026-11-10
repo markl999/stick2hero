@@ -31,7 +31,23 @@ export type SfxName =
   | 'bossDie'
   | 'throw'
   | 'switch'
-  | 'flag';
+  | 'flag'
+  | 'swing'
+  | 'clang'
+  | 'step'
+  | 'slam'
+  | 'dash'
+  | 'talk'
+  | 'save';
+
+export interface SfxOptions {
+  /** -1 (left) .. 1 (right). STEREO. */
+  pan?: number;
+  /** SAMPLES: a fuller, roomier sound. */
+  rich?: boolean;
+  /** 0..1 volume scale (distant footsteps are quieter). */
+  volume?: number;
+}
 
 const PILOT_HZ = 807;
 const BIT0_HZ = 2000;
@@ -42,6 +58,9 @@ export class AudioEngine {
   private master: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private music: ChipMusic | null = null;
+  /** Where sweep() and noise() send their output while a sound is being built. */
+  private bus: AudioNode | null = null;
+  private reverb: ConvolverNode | null = null;
   private musicWanted = false;
 
   unlock(): void {
@@ -104,11 +123,36 @@ export class AudioEngine {
     osc.stop(t + duration + 0.01);
   }
 
-  /** Era 1 SFX: simple one-voice arcade sounds, all synthesized. */
-  sfx(name: SfxName): void {
+  /**
+   * Sound effects, all synthesized. Era 1 sounds are simple one-voice blips. With
+   * SAMPLES + STEREO (`rich` + `pan`) the same sounds play through a small room and sit
+   * in the stereo field.
+   */
+  sfx(name: SfxName, options: SfxOptions = {}): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || ctx.state !== 'running') return;
     const t = ctx.currentTime;
+    const bus = ctx.createGain();
+    bus.gain.value = options.volume ?? 1;
+    let tail: AudioNode = bus;
+    if (options.pan) {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, options.pan));
+      tail = tail.connect(panner);
+    }
+    tail.connect(this.master);
+    if (options.rich) {
+      this.reverb ??= makeReverb(ctx, this.master);
+      tail.connect(this.reverb);
+    }
+    this.bus = bus;
+    this.playSfx(name, t, options.rich === true);
+    this.bus = null;
+    // Let the graph be collected once the longest sound has finished.
+    setTimeout(() => bus.disconnect(), 3000);
+  }
+
+  private playSfx(name: SfxName, t: number, rich: boolean): void {
     switch (name) {
       case 'jump':
         this.sweep('square', 300, 720, t, 0.12, 0.12);
@@ -154,6 +198,43 @@ export class AudioEngine {
         this.sweep('square', 784, 784, t + 0.18, 0.08, 0.1);
         this.sweep('square', 1047, 1047, t + 0.27, 0.16, 0.1);
         break;
+      case 'swing':
+        // A whoosh: filtered noise sweeping up.
+        this.noise(t, 0.14, 0.22, 900, 'bandpass', 3200);
+        break;
+      case 'clang':
+        // Metal: inharmonic partials ringing out.
+        for (const [hz, v] of [
+          [1180, 0.07],
+          [1630, 0.05],
+          [2350, 0.04],
+          [3170, 0.03],
+        ]) {
+          this.sweep(rich ? 'sine' : 'square', hz, hz * 0.98, t, 0.3, v);
+        }
+        this.noise(t, 0.05, 0.15, 5000, 'highpass');
+        break;
+      case 'step':
+        this.noise(t, 0.06, 0.3, 450);
+        this.sweep('sine', 110, 60, t, 0.05, 0.15);
+        break;
+      case 'slam':
+        this.noise(t, 0.5, 0.45, 300);
+        this.sweep('sine', 90, 35, t, 0.4, 0.35);
+        break;
+      case 'dash':
+        this.noise(t, 0.16, 0.18, 1500, 'highpass', 6000);
+        break;
+      case 'talk':
+        this.sweep('square', 560 + Math.random() * 160, 600, t, 0.03, 0.04);
+        break;
+      case 'save':
+        // A floppy drive grinding away.
+        for (let i = 0; i < 6; i++) {
+          this.sweep('square', 85 + (i % 2) * 20, 85, t + i * 0.09, 0.07, 0.05);
+          this.noise(t + i * 0.09, 0.05, 0.08, 2500, 'bandpass');
+        }
+        break;
       case 'bossDie':
         for (let i = 0; i < 8; i++) {
           this.noise(t + i * 0.18, 0.15, 0.22, 900 - i * 80);
@@ -180,24 +261,35 @@ export class AudioEngine {
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
     gain.gain.setValueAtTime(volume, start);
     gain.gain.linearRampToValueAtTime(0, start + duration);
-    osc.connect(gain).connect(this.master);
+    osc.connect(gain).connect(this.bus ?? this.master);
     osc.start(start);
     osc.stop(start + duration + 0.01);
   }
 
-  private noise(start: number, duration: number, volume: number, cutoff: number): void {
+  private noise(
+    start: number,
+    duration: number,
+    volume: number,
+    cutoff: number,
+    type: BiquadFilterType = 'lowpass',
+    cutoffEnd?: number,
+  ): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
     this.noiseBuffer ??= makeNoiseBuffer(ctx);
     const source = ctx.createBufferSource();
     source.buffer = this.noiseBuffer;
     const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = cutoff;
+    filter.type = type;
+    filter.frequency.setValueAtTime(cutoff, start);
+    if (cutoffEnd) filter.frequency.exponentialRampToValueAtTime(cutoffEnd, start + duration);
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-    source.connect(filter).connect(gain).connect(this.master);
+    source
+      .connect(filter)
+      .connect(gain)
+      .connect(this.bus ?? this.master);
     source.start(start);
     source.stop(start + duration + 0.01);
   }
@@ -277,4 +369,22 @@ function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   return buffer;
+}
+
+/** A small room: a stereo impulse of decaying noise, mixed in quietly. */
+function makeReverb(ctx: AudioContext, destination: AudioNode): ConvolverNode {
+  const length = Math.floor(ctx.sampleRate * 0.6);
+  const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = impulse.getChannelData(c);
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3);
+    }
+  }
+  const convolver = ctx.createConvolver();
+  convolver.buffer = impulse;
+  const wet = ctx.createGain();
+  wet.gain.value = 0.3;
+  convolver.connect(wet).connect(destination);
+  return convolver;
 }

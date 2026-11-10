@@ -30,6 +30,15 @@ export const FEATURE_IDS = [
   'THROW',
   'CHECKPOINTS',
   'COLOUR_16',
+  // Era 3 — 16-BIT
+  'PARALLAX',
+  'SAMPLES_STEREO',
+  'FACE',
+  'NPCS',
+  'OUTFIT',
+  'SWORD',
+  'DASH',
+  'SAVE_GAME',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -179,6 +188,62 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 2,
     description: 'The full 16-colour palette. Awarded for beating Flicker.',
     hint: 'ALL SIXTEEN OF THEM',
+  },
+  PARALLAX: {
+    id: 'PARALLAX',
+    label: 'PARALLAX',
+    era: 3,
+    description: 'Layered, scrolling backgrounds with 256-colour gradients.',
+    hint: 'AND 256 COLOURS',
+  },
+  SAMPLES_STEREO: {
+    id: 'SAMPLES_STEREO',
+    label: 'SAMPLES + STEREO',
+    era: 3,
+    description: 'Sampled sound effects, panned left and right. Hear enemies off-screen.',
+    hint: 'LISTEN FOR FOOTSTEPS',
+  },
+  FACE: {
+    id: 'FACE',
+    label: 'FACE',
+    era: 3,
+    description: 'Eyes and expressions. He looks worried near danger.',
+    hint: 'HE CAN SEE NOW',
+  },
+  NPCS: {
+    id: 'NPCS',
+    label: 'NPCS + DIALOGUE',
+    era: 3,
+    description: 'Other characters to talk to.',
+    hint: 'PRESS UP TO TALK',
+  },
+  OUTFIT: {
+    id: 'OUTFIT',
+    label: 'OUTFIT',
+    era: 3,
+    description: 'A tunic. The first sign of the hero look.',
+    hint: 'LOOKING SHARP',
+  },
+  SWORD: {
+    id: 'SWORD',
+    label: 'SWORD',
+    era: 3,
+    description: 'A sword with a 3-hit combo. Replaces the punch.',
+    hint: 'X OR J. TAP FOR A COMBO',
+  },
+  DASH: {
+    id: 'DASH',
+    label: 'DASH',
+    era: 3,
+    description: 'A quick burst through gaps and enemies.',
+    hint: 'SHIFT OR L',
+  },
+  SAVE_GAME: {
+    id: 'SAVE_GAME',
+    label: 'SAVE GAME',
+    era: 3,
+    description: 'The game can now save! (It always could.)',
+    hint: 'IT ALWAYS COULD. SHH',
   },
 };
 
