@@ -6,9 +6,14 @@ import type { Era, FeatureId } from '../core/features';
  *   '#'  solid tile
  *   '.'  empty
  *   '^'  spikes (not solid; deadly once DEATH exists)
+ *   '~'  hot bricks (solid; deadly to stand on once DEATH exists, and only red with COLOUR)
+ *   'D'  door (solid until a switch on the same screen is hit)
  *   'P'  player spawn (feet at the bottom of the tile, horizontally centred)
  *   'e'  walker enemy (exists once ENEMIES does)
- *   'B'  the era's boss (feet at the bottom of the tile, horizontally centred)
+ *   'F'  checkpoint flag (works once CHECKPOINTS exists)
+ *   's'  switch (hit it with a thrown pebble)
+ *   'B'  The Block (Era 1 boss),  'V'  Flicker (Era 2 boss)
+ *   Entity positions are feet positions: bottom of the tile, horizontally centred.
  *   any key of `pickups` → a Feature pickup centred in that tile
  */
 export interface LevelDef {
@@ -26,7 +31,7 @@ export interface PickupSpawn {
   y: number;
 }
 
-export type EntityKind = 'walker' | 'boss';
+export type EntityKind = 'walker' | 'block' | 'flicker' | 'flag' | 'switch';
 
 export interface EntitySpawn {
   kind: EntityKind;
@@ -49,13 +54,17 @@ export interface SolidQuery {
   isSolid(tx: number, ty: number): boolean;
 }
 
-export const Tile = { Empty: 0, Solid: 1, Spikes: 2 } as const;
+export const Tile = { Empty: 0, Solid: 1, Spikes: 2, Hot: 3, Door: 4 } as const;
 export type Tile = (typeof Tile)[keyof typeof Tile];
 
 /** Spikes only hurt in the bottom part of their tile... */
 export const SPIKE_HEIGHT = 9;
 /** ...and not right at its edges (the tips are narrower than the tile; it's fairer). */
 export const SPIKE_INSET = 4;
+/** Standing on the very edge of a hot brick is safe. */
+export const HOT_INSET = 3;
+
+const SOLID_TILES: ReadonlySet<number> = new Set([Tile.Solid, Tile.Hot, Tile.Door]);
 
 export class TileMap implements SolidQuery {
   constructor(
@@ -77,19 +86,40 @@ export class TileMap implements SolidQuery {
     return this.tiles[ty * this.width + tx] as Tile;
   }
 
+  setTile(tx: number, ty: number, tile: Tile): void {
+    if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return;
+    this.tiles[ty * this.width + tx] = tile;
+  }
+
   /**
    * Collision rule for out-of-bounds tiles: the left and right edges are walls, while
    * above and below are open (falling out of the bottom is handled as a respawn).
    */
   isSolid(tx: number, ty: number): boolean {
     if (tx < 0 || tx >= this.width) return true;
-    return this.tileAt(tx, ty) === Tile.Solid;
+    return SOLID_TILES.has(this.tileAt(tx, ty));
   }
 
   /** Drawing rule: treat everything outside the map as solid, so edges don't get outlined. */
   isSolidForDraw(tx: number, ty: number): boolean {
     if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return true;
-    return this.tileAt(tx, ty) === Tile.Solid;
+    return SOLID_TILES.has(this.tileAt(tx, ty));
+  }
+
+  /** True if the box is standing on (or touching the top of) a hot brick. */
+  standsOnHot(box: { x: number; y: number; w: number; h: number }): boolean {
+    const feet = box.y + box.h;
+    const ty = Math.floor((feet + 0.5) / TILE);
+    if (Math.abs(feet - ty * TILE) > 0.5) return false;
+    const tx0 = Math.floor(box.x / TILE);
+    const tx1 = Math.floor((box.x + box.w - 1e-6) / TILE);
+    for (let tx = tx0; tx <= tx1; tx++) {
+      if (this.tileAt(tx, ty) !== Tile.Hot) continue;
+      const left = tx * TILE + HOT_INSET;
+      const right = (tx + 1) * TILE - HOT_INSET;
+      if (box.x < right && box.x + box.w > left) return true;
+    }
+    return false;
   }
 
   /** True if the box touches the deadly part of any spike tile. */
@@ -111,6 +141,14 @@ export class TileMap implements SolidQuery {
   }
 }
 
+const ENTITY_CHARS: Record<string, EntityKind> = {
+  e: 'walker',
+  B: 'block',
+  V: 'flicker',
+  F: 'flag',
+  s: 'switch',
+};
+
 export function parseLevel(def: LevelDef): ParsedLevel {
   const height = def.rows.length;
   if (height === 0) throw new Error(`Level "${def.name}" has no rows`);
@@ -130,9 +168,10 @@ export function parseLevel(def: LevelDef): ParsedLevel {
       const feet = { x: tx * TILE + TILE / 2, y: (ty + 1) * TILE };
       if (ch === '#') tiles[ty * width + tx] = Tile.Solid;
       else if (ch === '^') tiles[ty * width + tx] = Tile.Spikes;
+      else if (ch === '~') tiles[ty * width + tx] = Tile.Hot;
+      else if (ch === 'D') tiles[ty * width + tx] = Tile.Door;
       else if (ch === 'P') spawn = feet;
-      else if (ch === 'e') entities.push({ kind: 'walker', ...feet });
-      else if (ch === 'B') entities.push({ kind: 'boss', ...feet });
+      else if (ch in ENTITY_CHARS) entities.push({ kind: ENTITY_CHARS[ch], ...feet });
       else if (ch in def.pickups) {
         pickups.push({
           feature: def.pickups[ch],

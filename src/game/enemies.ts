@@ -210,3 +210,159 @@ export class BlockBoss {
     return 'damaged';
   }
 }
+
+// --- Flicker: Era 2's boss -----------------------------------------------------------
+
+export const FLICKER_W = 34;
+export const FLICKER_H = 22;
+export const FLICKER_HP = 6;
+const FLICKER_HOVER_TIME = 4.5;
+const FLICKER_BOMB_EVERY = 1.0;
+const FLICKER_DIVE_SPEED = 210;
+const FLICKER_RETURN_SPEED = 140;
+const FLICKER_HIT_FLICKER = 1.0;
+export const FLICKER_DEATH_TIME = 2;
+
+export type FlickerState = 'waiting' | 'hover' | 'dive' | 'return' | 'dying' | 'dead';
+
+/**
+ * Flicker: a flying sprite. It sweeps across the top of its arena dropping bombs, then
+ * dives at you. A nod to 8-bit sprite flicker: while it flickers (diving, or just hit)
+ * it can't be hurt. Hit it with pebbles thrown upwards while it hovers.
+ */
+export class FlickerBoss {
+  readonly box: Box;
+  state: FlickerState = 'waiting';
+  t = 0;
+  hp = FLICKER_HP;
+  /** Seconds of invulnerable flickering left after a hit. */
+  flickerT = 0;
+  prevX: number;
+  prevY: number;
+  readonly arenaX: number;
+  private readonly hoverY: number;
+  private readonly floorY: number;
+  private bombTimer = FLICKER_BOMB_EVERY;
+  private hoverClock = 0;
+  private target = { x: 0, y: 0 };
+
+  constructor(feetX: number, feetY: number, floorY: number) {
+    this.arenaX = Math.floor(feetX / VIEW_W) * VIEW_W;
+    this.hoverY = feetY - FLICKER_H;
+    this.floorY = floorY;
+    this.box = { x: feetX - FLICKER_W / 2, y: this.hoverY, w: FLICKER_W, h: FLICKER_H };
+    this.prevX = this.box.x;
+    this.prevY = this.box.y;
+  }
+
+  get centerX(): number {
+    return this.box.x + this.box.w / 2;
+  }
+
+  /** It flickers (and is invulnerable) while diving and just after being hit. */
+  get flickering(): boolean {
+    return this.flickerT > 0 || this.state === 'dive';
+  }
+
+  get harmful(): boolean {
+    return this.state === 'hover' || this.state === 'dive' || this.state === 'return';
+  }
+
+  get defeated(): boolean {
+    return this.state === 'dying' || this.state === 'dead';
+  }
+
+  activate(): void {
+    if (this.state !== 'waiting') return;
+    this.state = 'hover';
+    this.t = 0;
+  }
+
+  reset(): void {
+    if (this.defeated) return;
+    this.state = 'waiting';
+    this.t = 0;
+    this.box.x = this.arenaX + VIEW_W / 2 - FLICKER_W / 2;
+    this.box.y = this.hoverY;
+    this.prevX = this.box.x;
+    this.prevY = this.box.y;
+    this.flickerT = 0;
+  }
+
+  /** Returns a bomb drop position on the step it drops one. */
+  update(dt: number, targetX: number): { x: number; y: number } | null {
+    this.prevX = this.box.x;
+    this.prevY = this.box.y;
+    this.t += dt;
+    this.flickerT = Math.max(0, this.flickerT - dt);
+    const b = this.box;
+    switch (this.state) {
+      case 'hover': {
+        this.hoverClock += dt;
+        const cx = this.arenaX + VIEW_W / 2 + Math.sin(this.hoverClock * 0.9) * (VIEW_W / 2 - 50);
+        b.x = cx - b.w / 2;
+        b.y = this.hoverY + Math.sin(this.hoverClock * 2.3) * 5;
+        this.bombTimer -= dt;
+        if (this.t >= FLICKER_HOVER_TIME) {
+          this.state = 'dive';
+          this.t = 0;
+          this.target = { x: targetX - b.w / 2, y: this.floorY - b.h - 4 };
+          return null;
+        }
+        if (this.bombTimer <= 0) {
+          this.bombTimer = FLICKER_BOMB_EVERY;
+          return { x: this.centerX, y: b.y + b.h };
+        }
+        return null;
+      }
+      case 'dive':
+        if (this.moveTowards(this.target.x, this.target.y, FLICKER_DIVE_SPEED * dt)) {
+          this.state = 'return';
+          this.t = 0;
+        }
+        return null;
+      case 'return': {
+        const homeX =
+          this.arenaX + VIEW_W / 2 + Math.sin(this.hoverClock * 0.9) * (VIEW_W / 2 - 50);
+        if (this.moveTowards(homeX - b.w / 2, this.hoverY, FLICKER_RETURN_SPEED * dt)) {
+          this.state = 'hover';
+          this.t = 0;
+        }
+        return null;
+      }
+      case 'dying':
+        b.y += 30 * dt;
+        if (this.t >= FLICKER_DEATH_TIME) this.state = 'dead';
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  hit(): BossHit {
+    if (this.defeated || this.state === 'waiting') return 'ignored';
+    if (this.flickering) return 'blocked';
+    this.hp--;
+    this.flickerT = FLICKER_HIT_FLICKER;
+    if (this.hp <= 0) {
+      this.state = 'dying';
+      this.t = 0;
+      return 'killed';
+    }
+    return 'damaged';
+  }
+
+  private moveTowards(x: number, y: number, step: number): boolean {
+    const dx = x - this.box.x;
+    const dy = y - this.box.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= step) {
+      this.box.x = x;
+      this.box.y = y;
+      return true;
+    }
+    this.box.x += (dx / dist) * step;
+    this.box.y += (dy / dist) * step;
+    return false;
+  }
+}

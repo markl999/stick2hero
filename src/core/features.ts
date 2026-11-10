@@ -21,6 +21,15 @@ export const FEATURE_IDS = [
   'PUNCH',
   'SFX',
   'TITLE_SCREEN',
+  // Era 2 — 8-BIT
+  'COLOUR_4',
+  'SCROLLING',
+  'ANIMATION',
+  'MUSIC',
+  'HANDS_FEET',
+  'THROW',
+  'CHECKPOINTS',
+  'COLOUR_16',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -114,6 +123,62 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 1,
     description: 'The game gets a title screen.',
     hint: 'EVERY GAME NEEDS ONE',
+  },
+  COLOUR_4: {
+    id: 'COLOUR_4',
+    label: 'COLOUR (4)',
+    era: 2,
+    description: 'The first 4-colour palette. Red means danger.',
+    hint: 'RED MEANS DANGER',
+  },
+  SCROLLING: {
+    id: 'SCROLLING',
+    label: 'SCROLLING',
+    era: 2,
+    description: 'Smooth scrolling replaces flip-screen.',
+    hint: 'NO MORE SCREEN FLIPS',
+  },
+  ANIMATION: {
+    id: 'ANIMATION',
+    label: 'ANIMATION',
+    era: 2,
+    description: 'A walk cycle, a jump pose and a landing squash.',
+    hint: 'NO MORE SLIDING',
+  },
+  MUSIC: {
+    id: 'MUSIC',
+    label: 'MUSIC',
+    era: 2,
+    description: 'A 3-channel chiptune.',
+    hint: 'FINALLY',
+  },
+  HANDS_FEET: {
+    id: 'HANDS_FEET',
+    label: 'HANDS & FEET',
+    era: 2,
+    description: 'Wall slide and wall jump.',
+    hint: 'JUMP OFF WALLS',
+  },
+  THROW: {
+    id: 'THROW',
+    label: 'THROW',
+    era: 2,
+    description: 'Throw pebbles at enemies and switches. Hold up to throw upwards.',
+    hint: 'C OR K. HOLD UP TO AIM UP',
+  },
+  CHECKPOINTS: {
+    id: 'CHECKPOINTS',
+    label: 'CHECKPOINTS',
+    era: 2,
+    description: 'Flags save your progress.',
+    hint: 'TOUCH THE FLAGS',
+  },
+  COLOUR_16: {
+    id: 'COLOUR_16',
+    label: 'COLOUR (16)',
+    era: 2,
+    description: 'The full 16-colour palette. Awarded for beating Flicker.',
+    hint: 'ALL SIXTEEN OF THEM',
   },
 };
 

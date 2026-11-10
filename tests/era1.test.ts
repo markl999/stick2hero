@@ -158,7 +158,7 @@ describe('Era 1 level', () => {
       const below = level.map.isSolid(Math.floor(p.x / TILE), Math.floor(p.y / TILE) + 1);
       expect(below, `${p.feature} has ground below`).toBe(true);
     }
-    expect(level.entities.filter((e) => e.kind === 'boss')).toHaveLength(1);
+    expect(level.entities.filter((e) => e.kind === 'block')).toHaveLength(1);
   });
 });
 

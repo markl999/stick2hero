@@ -16,9 +16,10 @@ npm run build   # static build in dist/
 ```
 
 **Controls:** ← → / A D to move · Space / W / ↑ to jump (and climb, once you have arms) · ↓ to
-let go of a ledge · gamepad supported.
+let go of a ledge · X / J to punch · C / K to throw (hold ↑ to throw upwards) · gamepad supported.
+Each ability only works once you've collected it.
 
 ## Status
 
-M1 is done: the tape-loader intro and a playable Era 0 (BOOT) chapter with all seven of its
-features. Next is M2: Eras 1–2 (enemies, death, colour, scrolling, chiptune) and the first playtest.
+M2 is done: the tape-loader intro and three playable eras. BOOT (Era 0), ARCADE (Era 1, with
+The Block) and 8-BIT (Era 2, with Flicker). Next: a playtest, then M3 (Era 3, 16-BIT).

@@ -3,54 +3,171 @@
  * Every visual tier draws from this same pose; only the drawing style changes (PRD §8).
  */
 export type Segment = readonly [x0: number, y0: number, x1: number, y1: number];
+export type Joint = readonly [x: number, y: number];
 
 export interface StickPose {
   head: { x: number; y: number; r: number };
   segments: Segment[];
+  /** End points of the arms and legs, for drawing hands and feet (HANDS & FEET). */
+  hands: Joint[];
+  feet: Joint[];
 }
 
 export interface PoseOptions {
   arms: boolean;
-  /** 'hang' and 'climb' are fixed poses, not animation (that's the ANIMATION feature). */
   state: 'normal' | 'hang' | 'climb';
   facing: 1 | -1;
   punching?: boolean;
   /** Lying flat (the death animation). */
   dead?: boolean;
+  /**
+   * ANIMATION. Without it every state is one fixed pose (he slides around). With it:
+   * a walk cycle, jump and fall poses, a landing squash and a wall-slide pose.
+   */
+  animated?: {
+    /** Distance walked: drives the walk cycle. */
+    walkDistance: number;
+    moving: boolean;
+    onGround: boolean;
+    vy: number;
+    /** 0..1: how squashed from landing. */
+    squash: number;
+    wallSliding: boolean;
+  };
 }
 
-const HEAD = { x: 0, y: -23.5, r: 4.5 };
-const BODY: Segment = [0, -19, 0, -9];
+const HEAD_R = 4.5;
+const NECK = -19;
+const SHOULDER = -17;
+const HIP = -9;
+const HEAD_Y = -23.5;
 
-/** Fixed poses (no animation until the ANIMATION feature). */
 export function stickPose(options: PoseOptions): StickPose {
   const pose = basePose(options);
   return options.dead ? lieDown(pose, options.facing) : pose;
 }
 
-function basePose({ arms, state, facing, punching }: PoseOptions): StickPose {
-  if (state === 'hang') {
-    // Dangling from a ledge: head tilted away from the wall so the arms can reach up
-    // beside it to the ledge, legs together.
-    const segments: Segment[] = [BODY, [0, -9, -1, 0], [0, -9, 1, 0]];
-    if (arms) segments.push([0, -18, facing * 5, -29], [0, -18, facing * 3, -29]);
-    return { head: { ...HEAD, x: -facing * 2.5 }, segments };
+function basePose(o: PoseOptions): StickPose {
+  const f = o.facing;
+  if (o.state === 'hang') {
+    // Dangling from a ledge: head tilted away from the wall so the arms reach up beside it.
+    return build(
+      o,
+      -f * 2.5,
+      0,
+      [
+        [-1, 0],
+        [1, 0],
+      ],
+      [
+        [f * 5, -29],
+        [f * 3, -29],
+      ],
+      -18,
+    );
   }
-  if (state === 'climb') {
-    // Hauling up: one knee raised, arms pushing down on the ledge.
-    const segments: Segment[] = [BODY, [0, -9, facing * 4, -6], [0, -9, -1, 0]];
-    if (arms) segments.push([0, -17, facing * 5, -12], [0, -17, facing * 3, -12]);
-    return { head: HEAD, segments };
+  if (o.state === 'climb') {
+    return build(
+      o,
+      0,
+      0,
+      [
+        [f * 4, -6],
+        [-1, 0],
+      ],
+      [
+        [f * 5, -12],
+        [f * 3, -12],
+      ],
+    );
   }
-  // Feet stay inside the 10-unit-wide collision box so they never overlap walls.
-  const segments: Segment[] = [BODY, [0, -9, -3.5, 0], [0, -9, 3.5, 0]];
-  if (arms && punching) {
-    // One arm jabbing straight out, the other pulled back.
-    segments.push([0, -17, facing * 14, -16], [0, -17, -facing * 4, -12]);
-  } else if (arms) {
-    segments.push([0, -17, -5, -10], [0, -17, 5, -10]);
+
+  const a = o.animated;
+  let legs: Joint[] = [
+    [-3.5, 0],
+    [3.5, 0],
+  ];
+  let hands: Joint[] = [
+    [-5, -10],
+    [5, -10],
+  ];
+  let drop = 0; // landing squash lowers the body
+
+  if (a) {
+    drop = a.squash * 3;
+    if (a.wallSliding) {
+      legs = [
+        [f * 3, -2],
+        [f * 1, 0],
+      ];
+      hands = [
+        [f * 6, -24],
+        [f * 6, -20],
+      ];
+    } else if (!a.onGround) {
+      if (a.vy < 0) {
+        // Rising: knees tucked, arms up.
+        legs = [
+          [-f * 2, -4],
+          [f * 4, -6],
+        ];
+        hands = [
+          [-f * 4, -24],
+          [f * 6, -25],
+        ];
+      } else {
+        // Falling: legs apart, arms out.
+        legs = [
+          [-5, 0],
+          [5, -1],
+        ];
+        hands = [
+          [-8, -18],
+          [8, -18],
+        ];
+      }
+    } else if (a.moving) {
+      // Walk cycle: legs swing, feet lift, arms swing the other way.
+      const phase = a.walkDistance / 6;
+      const swing = Math.sin(phase);
+      legs = [
+        [swing * 5, -Math.max(0, Math.cos(phase)) * 2.5],
+        [-swing * 5, -Math.max(0, -Math.cos(phase)) * 2.5],
+      ];
+      hands = [
+        [-swing * 5, -10],
+        [swing * 5, -10],
+      ];
+    }
   }
-  return { head: HEAD, segments };
+  if (o.punching)
+    hands = [
+      [f * 14, -16],
+      [-f * 4, -12],
+    ];
+  return build(o, 0, drop, legs, hands);
+}
+
+function build(
+  o: PoseOptions,
+  headX: number,
+  drop: number,
+  legs: Joint[],
+  hands: Joint[],
+  shoulderY = SHOULDER,
+): StickPose {
+  const hip = HIP + drop;
+  const neck = NECK + drop;
+  const shoulder = shoulderY + drop;
+  const segments: Segment[] = [[0, neck, 0, hip]];
+  for (const [x, y] of legs) segments.push([0, hip, x, y]);
+  if (o.arms) for (const [x, y] of hands) segments.push([0, shoulder, x, y + drop * 0.5]);
+  return {
+    head: { x: headX, y: HEAD_Y + drop, r: HEAD_R },
+    segments,
+    hands: o.arms ? hands.map(([x, y]) => [x, y + drop * 0.5] as Joint) : [],
+    feet: legs,
+  };
 }
 
 /** Rotate the pose 90° so he lies on the floor, head away from where he was facing. */
@@ -62,5 +179,10 @@ function lieDown(pose: StickPose, facing: 1 | -1): StickPose {
     return [a, b, c, d];
   });
   const [hx, hy] = rotate(pose.head.x, pose.head.y);
-  return { head: { ...pose.head, x: hx, y: hy }, segments };
+  return {
+    head: { ...pose.head, x: hx, y: hy },
+    segments,
+    hands: pose.hands.map(([x, y]) => rotate(x, y)),
+    feet: pose.feet.map(([x, y]) => rotate(x, y)),
+  };
 }

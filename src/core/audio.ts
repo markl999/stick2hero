@@ -1,3 +1,5 @@
+import { ChipMusic } from './music';
+
 /**
  * Procedural audio via Web Audio. Browsers only allow audio after a user gesture, so
  * `unlock()` is called from the first key/pointer press (the tape loader's
@@ -26,7 +28,10 @@ export type SfxName =
   | 'bossHit'
   | 'clank'
   | 'bossLand'
-  | 'bossDie';
+  | 'bossDie'
+  | 'throw'
+  | 'switch'
+  | 'flag';
 
 const PILOT_HZ = 807;
 const BIT0_HZ = 2000;
@@ -36,6 +41,8 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  private music: ChipMusic | null = null;
+  private musicWanted = false;
 
   unlock(): void {
     if (!this.ctx) {
@@ -48,7 +55,32 @@ export class AudioEngine {
         return; // No Web Audio: the game stays silent.
       }
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state === 'suspended') {
+      void this.ctx.resume().then(() => this.syncMusic());
+    } else {
+      this.syncMusic();
+    }
+  }
+
+  /** MUSIC on or off. Starts as soon as audio is allowed, fading in. */
+  setMusic(on: boolean): void {
+    this.musicWanted = on;
+    this.syncMusic();
+  }
+
+  private syncMusic(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    if (this.musicWanted && ctx.state === 'running') {
+      this.music ??= new ChipMusic(
+        ctx,
+        this.master,
+        () => (this.noiseBuffer ??= makeNoiseBuffer(ctx)),
+      );
+      this.music.start();
+    } else if (!this.musicWanted) {
+      this.music?.stop();
+    }
   }
 
   get ready(): boolean {
@@ -107,6 +139,20 @@ export class AudioEngine {
         break;
       case 'bossLand':
         this.noise(t, 0.3, 0.3, 400);
+        break;
+      case 'throw':
+        this.sweep('square', 900, 1500, t, 0.06, 0.08);
+        break;
+      case 'switch':
+        this.sweep('square', 400, 400, t, 0.06, 0.12);
+        this.sweep('square', 600, 600, t + 0.07, 0.06, 0.12);
+        this.sweep('square', 800, 800, t + 0.14, 0.12, 0.12);
+        break;
+      case 'flag':
+        this.sweep('square', 523, 523, t, 0.08, 0.1);
+        this.sweep('square', 659, 659, t + 0.09, 0.08, 0.1);
+        this.sweep('square', 784, 784, t + 0.18, 0.08, 0.1);
+        this.sweep('square', 1047, 1047, t + 0.27, 0.16, 0.1);
         break;
       case 'bossDie':
         for (let i = 0; i < 8; i++) {

@@ -29,6 +29,16 @@ export const HANG_OFFSET = 2;
 export const CLIMB_TIME = 0.22;
 export const REGRAB_COOLDOWN = 0.3;
 
+/** HANDS & FEET: slide down walls slowly, and jump off them. */
+export const WALL_SLIDE_SPEED = 90;
+export const WALL_JUMP_SPEED = 360;
+/** After a wall jump you're pushed away from the wall for a moment, whatever you press. */
+export const WALL_JUMP_PUSH_TIME = 0.14;
+const WALL_COYOTE = 0.08;
+
+/** ANIMATION: how long the landing squash lasts. */
+export const LAND_SQUASH_TIME = 0.12;
+
 /** PUNCH: a short jab in front of you. */
 export const PUNCH_TIME = 0.15;
 export const PUNCH_COOLDOWN = 0.3;
@@ -49,6 +59,7 @@ export interface PlayerAbilities {
   jump: boolean;
   grab: boolean;
   punch: boolean;
+  wallJump: boolean;
 }
 
 export interface Bounds {
@@ -78,6 +89,12 @@ export class Player {
   punchT = 0;
   /** Increments with every punch, so a target is only hit once per punch. */
   punchId = 0;
+  /** Distance walked on the ground (drives the walk cycle). */
+  walkDistance = 0;
+  /** Counts down after landing (drives the landing squash). */
+  landSquash = 0;
+  /** Pressed against a wall in the air, sliding down it (HANDS & FEET). */
+  wallSliding = false;
   /** Position at the start of the last step, for render interpolation. */
   prevX: number;
   prevY: number;
@@ -86,6 +103,9 @@ export class Player {
   private buffer = 0;
   private regrab = 0;
   private punchCooldown = 0;
+  private wallCoyote = 0;
+  private wallDir: 1 | -1 = 1;
+  private pushT = 0;
   private climbFrom = { x: 0, y: 0 };
   private climbTo = { x: 0, y: 0 };
 
@@ -137,6 +157,9 @@ export class Player {
     this.regrab = Math.max(0, this.regrab - dt);
     this.punchT = Math.max(0, this.punchT - dt);
     this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    this.landSquash = Math.max(0, this.landSquash - dt);
+    this.wallCoyote = Math.max(0, this.wallCoyote - dt);
+    this.pushT = Math.max(0, this.pushT - dt);
     const events: PlayerEvents = { jumped: false, landed: false, grabbed: false, punched: false };
 
     if (this.state === 'climb') {
@@ -148,10 +171,14 @@ export class Player {
       return events;
     }
 
-    // Horizontal: instant velocity (Era 0 has no acceleration curve).
+    // Horizontal: instant velocity (no acceleration curve in the pixel eras).
     const dir = (controls.right ? 1 : 0) - (controls.left && abilities.moveLeft ? 1 : 0);
-    this.vx = dir * RUN_SPEED;
-    if (dir !== 0) this.facing = dir > 0 ? 1 : -1;
+    if (this.pushT > 0) {
+      this.vx = -this.wallDir * RUN_SPEED; // pushed off the wall
+    } else {
+      this.vx = dir * RUN_SPEED;
+      if (dir !== 0) this.facing = dir > 0 ? 1 : -1;
+    }
 
     if (controls.attackPressed && abilities.punch && this.punchCooldown <= 0) {
       this.punchT = PUNCH_TIME;
@@ -169,6 +196,16 @@ export class Player {
       this.buffer = 0;
       this.coyote = 0;
       events.jumped = true;
+    } else if (this.buffer > 0 && !this.onGround && this.wallCoyote > 0 && abilities.wallJump) {
+      // Wall jump: up and away from the wall.
+      this.vy = -WALL_JUMP_SPEED;
+      this.buffer = 0;
+      this.wallCoyote = 0;
+      this.pushT = WALL_JUMP_PUSH_TIME;
+      this.vx = -this.wallDir * RUN_SPEED;
+      this.facing = this.wallDir > 0 ? -1 : 1;
+      this.regrab = WALL_JUMP_PUSH_TIME + 0.05;
+      events.jumped = true;
     }
     if (!controls.jumpHeld && this.vy < -JUMP_SPEED * JUMP_CUT) {
       this.vy = -JUMP_SPEED * JUMP_CUT;
@@ -176,7 +213,20 @@ export class Player {
 
     this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
 
-    if (moveX(this.box, this.vx * dt, map)) this.vx = 0;
+    const hitWall = moveX(this.box, this.vx * dt, map);
+    if (hitWall) this.vx = 0;
+    // Pressing into a wall in the air: remember it for wall jumps, and slide down slowly.
+    this.wallSliding = false;
+    if (hitWall && dir !== 0 && !this.onGround && this.pushT <= 0) {
+      this.wallDir = dir > 0 ? 1 : -1;
+      this.wallCoyote = WALL_COYOTE;
+      if (abilities.wallJump && this.vy > WALL_SLIDE_SPEED) {
+        this.vy = WALL_SLIDE_SPEED;
+        this.wallSliding = true;
+      } else if (abilities.wallJump && this.vy > 0) {
+        this.wallSliding = true;
+      }
+    }
     if (bounds) {
       if (this.box.x < bounds.minX) this.box.x = bounds.minX;
       if (this.box.x + this.box.w > bounds.maxX) this.box.x = bounds.maxX - this.box.w;
@@ -187,6 +237,8 @@ export class Player {
     this.onGround = hitY && this.vy > 0;
     if (hitY) this.vy = 0;
     events.landed = this.onGround && !wasOnGround;
+    if (events.landed) this.landSquash = LAND_SQUASH_TIME;
+    if (this.onGround) this.walkDistance += Math.abs(this.box.x - this.prevX);
 
     if (abilities.grab && dir !== 0 && this.tryGrab(dir > 0 ? 1 : -1, map)) events.grabbed = true;
     return events;

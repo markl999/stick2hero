@@ -38,6 +38,16 @@ export class PixelCanvas {
     this.ctx.restore();
   }
 
+  /** Draw everything inside `fn` clipped to a circle (the COLOUR wave). */
+  clippedToCircle(cx: number, cy: number, r: number, fn: () => void): void {
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2);
+    this.ctx.clip();
+    fn();
+    this.ctx.restore();
+  }
+
   imageData(): ImageData {
     return this.ctx.getImageData(0, 0, this.width, this.height);
   }
