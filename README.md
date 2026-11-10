@@ -34,6 +34,10 @@ Each ability only works once you've collected it.
 
 There's a high-score table too, but you have to find it first.
 
+**After the ending**, a completion screen shows what you collected, your time and deaths, and the
+pause menu gains **FEATURES**: switch any feature you've collected on or off (a whole era at once
+from its heading). Turn off Eras 1–5 and the last roof is a white void again.
+
 ## Status
 
 M5 is done: the whole game plays from the tape loader to the ending. BOOT, ARCADE (The Block),

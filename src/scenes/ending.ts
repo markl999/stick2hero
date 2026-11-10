@@ -231,7 +231,7 @@ export class EndingScene implements Scene {
     ctx.font = font(ph * 0.032, 600);
     const { score, deaths } = this.options;
     ctx.fillText(
-      `SCORE ${Math.floor(score).toLocaleString('en-GB')}   ·   DEATHS THIS ERA ${deaths}`,
+      `SCORE ${Math.floor(score).toLocaleString('en-GB')}   ·   DEATHS ${deaths}`,
       px + pw * 0.68,
       py + ph * 0.93,
     );

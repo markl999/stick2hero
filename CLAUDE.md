@@ -7,11 +7,12 @@ A browser platformer where you collect the features of video games themselves. T
 - `npm run dev`: dev server (http://localhost:5173). Press backquote (`) to open the debug overlay: toggle features, change resolution, reset the save.
 - `npm run check`: type-check + lint + tests. Run before calling anything done.
 - `npm run build`: production build to `dist/` (static, relative paths). Add `?debug` to the URL to get the overlay in production.
-- `?skipintro` in the URL goes straight past the tape loader. In dev, `window.__stick2hero` exposes `{ game, features, setScene, gameScene, ending }` for the console and browser automation (`ending()` jumps straight to the ending). Beating the Deprecator saves `cleared`, after which the finale starts out done: use "reset save" to fight it again.
+- `?skipintro` in the URL goes straight past the tape loader. In dev, `window.__stick2hero` exposes `{ game, features, setScene, gameScene, scene, ending }` for the console and browser automation (`ending()` jumps straight to the ending). Beating the Deprecator saves `cleared`, after which the finale starts out done: use "reset save" to fight it again.
 
 ## Architecture rules
 
 - **Options aren't features.** The pause menu (`src/scenes/pause.ts`, Esc / Start, available from the start) holds controls/rebinding, volume and NEW GAME. Settings (`src/core/settings.ts`) and the high-score table (`src/core/scores.ts`) are stored apart from the save, so NEW GAME keeps them. Rebindable actions are `BINDABLE_ACTIONS` in `input.ts`; menus read the fixed `confirm`/`back`/`menu*` actions (Esc, Enter, arrows), which can't be rebound. Secrets are features with `secret: true` (the finale leaves them be). Accessibility options are `game.comfort` (`src/core/comfort.ts`): any new full-screen flash, camera shake or big screen motion must check it (`reduceFlashing` / `reduceShake` / `reduceMotion`), and anything colour-coded needs a shape cue too.
+- **Post-game:** the Feature Menu (pause → FEATURES, once `cleared`) locks/unlocks features and keeps the switched-off ones in `disabled` (save) / `game.disabled` (pickups stay collected). Lists and toggling live in `src/core/featureMenu.ts`; the completion screen is `src/scenes/completion.ts`.
 - **Every feature gate goes through `FeatureRegistry`** (`src/core/features.ts`). Systems ask `features.has('X')`. Never add ad-hoc booleans for unlockable behaviour. New features get added to `FEATURE_IDS` + `FEATURES`.
 - **Features gate abilities, never input devices.** Input always reads every key and gamepad. Game logic decides what's allowed.
 - **Game logic (`src/game`, `src/world`, `src/core` apart from audio/input) is free of Pixi and the DOM** and covered by Vitest. Rendering only _reads_ game state.

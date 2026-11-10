@@ -1,5 +1,5 @@
 import { TILE, VIEW_H, VIEW_W } from '../../config';
-import { FEATURES } from '../../core/features';
+import { FEATURES, hasEraFeature } from '../../core/features';
 import {
   BOSS_HP,
   FLICKER_HP,
@@ -211,7 +211,7 @@ function baseStyle(game: Game, colour: 0 | 4 | 16): PixelStyle {
  */
 function era5Style(game: Game, colour: 0 | 4 | 16): PixelStyle {
   const f = game.features;
-  if (!f.has('FRAME_RATE')) return ERA0;
+  if (!f.has('FRAME_RATE') || !hasEraFeature(f, 1)) return ERA0;
   if (colour === 0) return MONO;
   if (colour === 4) return COLOUR4;
   if (f.has('LIGHTING')) return NIGHT;

@@ -16,6 +16,11 @@ export interface SaveData {
   cleared: boolean;
   /** This playthrough's id: its row in the high-score table. NEW GAME starts a new one. */
   run: number;
+  /** Collected features switched off in the post-game Feature Menu (still yours). */
+  disabled: FeatureId[];
+  /** Seconds of play, and deaths, over the whole run (for the completion screen). */
+  playTime: number;
+  deaths: number;
 }
 
 export function newRunId(): number {
@@ -32,6 +37,9 @@ export function defaultSave(): SaveData {
     era: 0,
     cleared: false,
     run: newRunId(),
+    disabled: [],
+    playTime: 0,
+    deaths: 0,
   };
 }
 
@@ -55,10 +63,17 @@ export function loadSave(): SaveData {
         typeof data.run === 'number' && Number.isFinite(data.run) && data.run > 0
           ? data.run
           : newRunId(),
+      disabled: Array.isArray(data.disabled) ? data.disabled.filter(isFeatureId) : [],
+      playTime: count(data.playTime),
+      deaths: Math.floor(count(data.deaths)),
     };
   } catch {
     return defaultSave();
   }
+}
+
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function isPoint(value: unknown): value is { x: number; y: number } {

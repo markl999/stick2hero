@@ -218,6 +218,8 @@ export class Game {
   hiScore: number;
   /** Accessibility options; the app swaps in a new object when they change. */
   comfort: Comfort;
+  /** Collected but switched off in the Feature Menu: their pickups stay collected. */
+  disabled: ReadonlySet<FeatureId> = new Set();
   /** Feet position to respawn at; moves to each collected pickup. */
   checkpoint: Point;
   lives = START_LIVES;
@@ -1391,7 +1393,9 @@ export class Game {
 
   /** Keep derived state in line with the registry (the debug overlay can toggle anything). */
   private syncWithFeatures(): void {
-    for (const pickup of this.pickups) pickup.collected = this.features.has(pickup.feature);
+    for (const pickup of this.pickups) {
+      pickup.collected = this.features.has(pickup.feature) || this.disabled.has(pickup.feature);
+    }
     this.camera.mode = this.features.has('SCROLLING')
       ? 'scroll'
       : this.features.has('SCREEN_2')

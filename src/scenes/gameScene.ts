@@ -1,3 +1,4 @@
+import { hasEraFeature } from '../core/features';
 import type { Input } from '../core/input';
 import type { Game, GameRequest } from '../game/game';
 import { RESOLUTIONS, type ResolutionRequest } from '../render/display';
@@ -34,7 +35,7 @@ export class GameScene implements Scene {
     if (era < 5) return era >= 3 ? RESOLUTIONS.ERA3 : RESOLUTIONS.ERA1;
     // Era 5's look follows its features, so the finale can roll it all the way back.
     if (features.has('HD')) return 'native';
-    if (!features.has('FRAME_RATE')) return RESOLUTIONS.ERA0;
+    if (!features.has('FRAME_RATE') || !hasEraFeature(features, 1)) return RESOLUTIONS.ERA0;
     if (features.has('PARALLAX') || features.has('LIGHTING')) return RESOLUTIONS.ERA3;
     return RESOLUTIONS.ERA1;
   }

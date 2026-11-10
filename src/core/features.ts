@@ -356,7 +356,7 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     id: 'CAPE',
     label: 'CAPE',
     era: 5,
-    description: 'The last body part. Hold jump in the air to glide; vents lift you.',
+    description: 'The last body part. Hold jump in the air to glide. Vents lift you.',
     hint: 'HOLD JUMP TO GLIDE',
   },
   BLOOM: {
@@ -408,6 +408,17 @@ export const ERA_NAMES: Record<Era, string> = {
 
 export function isFeatureId(value: unknown): value is FeatureId {
   return typeof value === 'string' && (FEATURE_IDS as readonly string[]).includes(value);
+}
+
+/**
+ * Is anything from this era on (secrets aside)? Era 5's look follows its features, and an
+ * era's look comes with its features: with nothing from Era 1 on (the Feature Menu can do
+ * that), it's still Era 0's white void.
+ */
+export function hasEraFeature(features: FeatureRegistry, era: Era): boolean {
+  return FEATURE_IDS.some(
+    (id) => FEATURES[id].era === era && !FEATURES[id].secret && features.has(id),
+  );
 }
 
 export type FeatureListener = (id: FeatureId, active: boolean) => void;

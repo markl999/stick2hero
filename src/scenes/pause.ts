@@ -10,6 +10,8 @@ import {
   type Input,
 } from '../core/input';
 import { COMFORT_KEYS, type Comfort } from '../core/comfort';
+import { featureRows, toggleRow, type FeatureRow } from '../core/featureMenu';
+import { ERA_NAMES, FEATURES, type FeatureId } from '../core/features';
 import type { ScoreEntry } from '../core/scores';
 import { VOLUME_STEPS, type Settings } from '../core/settings';
 import type { ResolutionRequest } from '../render/display';
@@ -40,16 +42,29 @@ export interface PauseOptions {
   /** HIGH SCORES: the table, or null if you haven't found it yet. */
   highScores: () => readonly ScoreEntry[] | null;
   run: number;
+  /** The post-game Feature Menu, or null before the Deprecator's beaten. */
+  featureMenu: FeatureMenuOptions | null;
   onResume: () => void;
   /** Wipe the save and start again from the tape. */
   onNewGame: () => void;
 }
 
-type Item = 'resume' | 'controls' | 'access' | 'music' | 'sfx' | 'scores' | 'newGame';
-type Page_ = 'main' | 'controls' | 'access' | 'scores' | 'newGame';
+export interface FeatureMenuOptions {
+  /** Everything you've collected, on or off. */
+  owned: () => ReadonlySet<FeatureId>;
+  isOn: (id: FeatureId) => boolean;
+  set: (id: FeatureId, on: boolean) => void;
+}
+
+type Item = 'resume' | 'features' | 'controls' | 'access' | 'music' | 'sfx' | 'scores' | 'newGame';
+type Page_ = 'main' | 'features' | 'controls' | 'access' | 'scores' | 'newGame';
+
+/** Rows of the Feature Menu on screen at once. */
+const FEATURE_ROWS_SHOWN = 13;
 
 const ITEM_LABELS: Record<Item, string> = {
   resume: 'RESUME',
+  features: 'FEATURES',
   controls: 'CONTROLS',
   access: 'ACCESSIBILITY',
   music: 'MUSIC',
@@ -91,6 +106,9 @@ export class PauseScene implements Scene {
   private cursor = 0;
   private controlsCursor = 0;
   private accessCursor = 0;
+  private featureCursor = 0;
+  /** First Feature Menu row on screen. */
+  private featureScroll = 0;
   /** New game: 0 = NO, 1 = YES. */
   private confirmCursor = 0;
   /** The controls screen is waiting for a key for this action. */
@@ -112,7 +130,9 @@ export class PauseScene implements Scene {
   }
 
   private items(): Item[] {
-    const items: Item[] = ['resume', 'controls', 'access', 'music', 'sfx'];
+    const items: Item[] = ['resume'];
+    if (this.opts.featureMenu) items.push('features');
+    items.push('controls', 'access', 'music', 'sfx');
     if (this.opts.highScores()) items.push('scores');
     items.push('newGame');
     return items;
@@ -127,6 +147,7 @@ export class PauseScene implements Scene {
     if (this.page === 'main') this.updateMain(input);
     else if (this.page === 'controls') this.updateControls(input);
     else if (this.page === 'access') this.updateAccess(input);
+    else if (this.page === 'features') this.updateFeatures(input);
     else if (this.page === 'scores') {
       if (menuBack(input) || menuConfirm(input)) this.page = 'main';
     } else this.updateNewGame(input);
@@ -153,6 +174,8 @@ export class PauseScene implements Scene {
     else if (item === 'controls') {
       this.page = 'controls';
       this.controlsCursor = 0;
+    } else if (item === 'features') {
+      this.page = 'features';
     } else if (item === 'access') {
       this.page = 'access';
       this.accessCursor = 0;
@@ -160,6 +183,33 @@ export class PauseScene implements Scene {
     else if (item === 'newGame') {
       this.page = 'newGame';
       this.confirmCursor = 0;
+    }
+  }
+
+  private featureRows(): FeatureRow[] {
+    return this.opts.featureMenu ? featureRows(this.opts.featureMenu.owned()) : [];
+  }
+
+  /** The Feature Menu: a long list, scrolled to keep the cursor in view. */
+  private updateFeatures(input: Input): void {
+    const menu = this.opts.featureMenu;
+    const rows = this.featureRows();
+    if (!menu || menuBack(input) || rows.length === 0) {
+      this.page = 'main';
+      return;
+    }
+    const n = rows.length;
+    if (menuPressed(input, 'up')) this.featureCursor = (this.featureCursor + n - 1) % n;
+    if (menuPressed(input, 'down')) this.featureCursor = (this.featureCursor + 1) % n;
+    this.featureCursor = Math.min(this.featureCursor, n - 1);
+    if (this.featureCursor < this.featureScroll) this.featureScroll = this.featureCursor;
+    if (this.featureCursor >= this.featureScroll + FEATURE_ROWS_SHOWN) {
+      this.featureScroll = this.featureCursor - FEATURE_ROWS_SHOWN + 1;
+    }
+    const toggle = menuConfirm(input) || menuPressed(input, 'left') || menuPressed(input, 'right');
+    if (!toggle) return;
+    for (const change of toggleRow(rows[this.featureCursor], menu.owned(), menu.isOn)) {
+      menu.set(change.id, change.on);
     }
   }
 
@@ -281,6 +331,7 @@ export class PauseScene implements Scene {
     if (this.page === 'main') this.drawMain(page);
     else if (this.page === 'controls') this.drawControls(page);
     else if (this.page === 'access') this.drawAccess(page);
+    else if (this.page === 'features') this.drawFeatures(page);
     else if (this.page === 'scores') {
       drawScoreTable(page, this.opts.highScores() ?? [], this.opts.run, this.t);
       page.color(DIM).center('ESC: BACK', 166);
@@ -291,7 +342,7 @@ export class PauseScene implements Scene {
     page.color(INK).center('PAUSED', 14, 3);
     const settings = this.opts.settings();
     this.items().forEach((item, i) => {
-      const y = 42 + i * 16;
+      const y = 40 + i * 15;
       const selected = i === this.cursor;
       page.item(ITEM_LABELS[item], 96, y, 128, 2, selected);
       if (item === 'music' || item === 'sfx') {
@@ -305,6 +356,43 @@ export class PauseScene implements Scene {
       }
     });
     page.color(DIM).center('ARROWS: CHOOSE   ENTER: SELECT   ESC: RESUME', 166);
+  }
+
+  private drawFeatures(page: Page): void {
+    const menu = this.opts.featureMenu;
+    if (!menu) return;
+    page.color(INK).center('FEATURES', 6, 2);
+    const rows = this.featureRows();
+    const owned = menu.owned();
+    const shown = rows.slice(this.featureScroll, this.featureScroll + FEATURE_ROWS_SHOWN);
+    shown.forEach((row, i) => {
+      const y = 24 + i * 9;
+      const selected = this.featureScroll + i === this.featureCursor;
+      if (row.kind === 'era') {
+        const group = [...owned].filter((id) => FEATURES[id].era === row.era);
+        const on = group.filter(menu.isOn).length;
+        page.item(`ERA ${row.era}: ${ERA_NAMES[row.era]}`, 56, y, 208, 1, selected);
+        page.color(selected ? BLACK : DIM).right(`${on}/${group.length} ON`, 264, y);
+        return;
+      }
+      const on = menu.isOn(row.id);
+      page.item(FEATURES[row.id].label, 68, y, 196, 1, selected);
+      page.color(selected ? BLACK : on ? INK : DIM).right(on ? 'ON' : 'OFF', 264, y);
+    });
+    // Scroll hints.
+    page.color(DIM);
+    if (this.featureScroll > 0) page.text('^', 268, 24);
+    if (this.featureScroll + FEATURE_ROWS_SHOWN < rows.length) page.text('V', 268, 132);
+    const row = rows[this.featureCursor];
+    page
+      .color(INK)
+      .center(
+        row?.kind === 'feature'
+          ? FEATURES[row.id].description.toUpperCase()
+          : 'SWITCH THE WHOLE ERA ON OR OFF',
+        148,
+      );
+    page.color(DIM).center('ENTER: SWITCH   ESC: BACK', 164);
   }
 
   private drawAccess(page: Page): void {

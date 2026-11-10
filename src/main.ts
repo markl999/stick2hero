@@ -1,6 +1,6 @@
 import { VIEW_W } from './config';
 import { AudioEngine, type MusicTrack } from './core/audio';
-import { FEATURE_IDS, FeatureRegistry, type Era } from './core/features';
+import { FEATURE_IDS, FeatureRegistry, type Era, type FeatureId } from './core/features';
 import { Input } from './core/input';
 import { FixedLoop } from './core/loop';
 import { clearSave, defaultSave, loadSave, writeSave } from './core/save';
@@ -12,6 +12,7 @@ import { Display, type Resolution } from './render/display';
 import { GameOverScene, TitleScene } from './scenes/cards';
 import { EndingScene } from './scenes/ending';
 import { EraEndScene } from './scenes/eraEnd';
+import { CompletionScene } from './scenes/completion';
 import { GameScene, type SceneRequest } from './scenes/gameScene';
 import { HighScoreScene } from './scenes/highScores';
 import { PauseScene } from './scenes/pause';
@@ -23,7 +24,9 @@ import { parseLevel } from './world/tilemap';
 async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const save = loadSave();
-  const features = new FeatureRegistry(save.features);
+  // Switched off in the Feature Menu: still collected, just not on.
+  const disabled = new Set<FeatureId>(save.disabled.filter((id) => save.features.includes(id)));
+  const features = new FeatureRegistry(save.features.filter((id) => !disabled.has(id)));
   const audio = new AudioEngine();
   const input = new Input();
   input.attach(window, () => audio.unlock());
@@ -51,28 +54,41 @@ async function boot(): Promise<void> {
   let gameScene: GameScene;
   /** PHOTO MODE asked for the next frame to be saved. */
   let photoPending = false;
+  /** Deaths in earlier eras' games (each era is a new Game with its own count). */
+  let deathsBefore = save.deaths;
+  const totalDeaths = () => deathsBefore + (game?.stats.deaths ?? 0);
 
   const gamepads = () =>
     (navigator.getGamepads?.() ?? []).filter((pad): pad is Gamepad => pad?.connected === true);
 
+  /** Set just before a deliberate reset reloads the page, so nothing writes the old game back. */
+  let saveFrozen = false;
   const persist = () => {
+    if (saveFrozen) return;
     // Features the Deprecator has taken (for now) are still yours: save them as collected.
+    // So are features switched off in the Feature Menu.
     const taken = game?.finale?.stripped ?? [];
     writeSave({
       version: 1,
-      features: FEATURE_IDS.filter((id) => features.has(id) || taken.includes(id)),
+      features: FEATURE_IDS.filter(
+        (id) => features.has(id) || taken.includes(id) || disabled.has(id),
+      ),
       score: game.score,
       introSeen: save.introSeen,
       checkpoint: game.checkpoint,
       era,
       cleared: save.cleared,
       run: save.run,
+      disabled: [...disabled],
+      playTime: save.playTime,
+      deaths: totalDeaths(),
     });
   };
 
   const startEra = (index: number, checkpoint: Point | null, score: number) => {
     // Leaving the finale mid-fight gives back everything it took.
     game?.finale?.restoreAll();
+    deathsBefore = totalDeaths();
     era = index;
     game = new Game({
       features,
@@ -113,6 +129,7 @@ async function boot(): Promise<void> {
       hiScore: scores[0]?.score ?? 0,
       comfort: settings.comfort,
     });
+    game.disabled = disabled;
     gameScene = new GameScene(game, onRequest);
   };
 
@@ -150,9 +167,27 @@ async function boot(): Promise<void> {
         previewSfx: () => audio.beep(),
         highScores: () => (features.has('HIGH_SCORES') ? scores : null),
         run: save.run,
+        // The Feature Menu: after the Deprecator, switch anything you've collected.
+        featureMenu: save.cleared
+          ? {
+              owned: () =>
+                new Set(FEATURE_IDS.filter((id) => features.has(id) || disabled.has(id))),
+              isOn: (id) => features.has(id),
+              set: (id, on) => {
+                if (on) {
+                  disabled.delete(id);
+                  features.unlock(id);
+                } else {
+                  disabled.add(id);
+                  features.lock(id);
+                }
+              },
+            }
+          : null,
         onResume: () => setScene(resumeTo),
         onNewGame: () => {
           // A fresh save (a new run for the high-score table), then start from the tape.
+          saveFrozen = true;
           writeSave({ ...defaultSave(), introSeen: true });
           location.reload();
         },
@@ -201,15 +236,24 @@ async function boot(): Promise<void> {
         new EndingScene({
           audio,
           score: game.score,
-          deaths: game.stats.deaths,
+          deaths: totalDeaths(),
           reducedMotion: calmStripes(),
           onDone: () =>
-            thenScores(() => {
-              // Back on the roof, the Deprecator gone, everything yours.
-              startEra(era, game.checkpoint, game.score);
-              persist();
-              setScene(new TitleScene(() => setScene(gameScene)));
-            }),
+            setScene(
+              new CompletionScene({
+                owned: FEATURE_IDS.filter((id) => features.has(id) || disabled.has(id)),
+                playTime: save.playTime,
+                deaths: totalDeaths(),
+                score: game.score,
+                onDone: () =>
+                  thenScores(() => {
+                    // Back on the roof, the Deprecator gone, everything yours.
+                    startEra(era, game.checkpoint, game.score);
+                    persist();
+                    setScene(new TitleScene(() => setScene(gameScene)));
+                  }),
+              }),
+            ),
         }),
       );
     }
@@ -217,6 +261,11 @@ async function boot(): Promise<void> {
 
   startEra(era, save.checkpoint, save.score);
   features.onChange(() => persist());
+  // Keep the play time (and everything else) when the tab is hidden or closed.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') persist();
+  });
+  window.addEventListener('pagehide', () => persist());
 
   /**
    * The soundtrack plays everywhere once you have it, except over the tape loader. Scenes
@@ -250,6 +299,7 @@ async function boot(): Promise<void> {
   const loop = new FixedLoop({
     step: (dt) => {
       input.poll();
+      if (scene === gameScene) save.playTime += dt;
       scene.update(dt, input);
       loop.renderCap = scene.renderCap();
       syncMusic();
@@ -337,6 +387,7 @@ async function boot(): Promise<void> {
         },
         playIntro: () => setScene(tapeScene()),
         resetSave: () => {
+          saveFrozen = true;
           clearSave();
           location.reload();
         },
@@ -354,6 +405,10 @@ async function boot(): Promise<void> {
         setScene,
         get gameScene() {
           return gameScene;
+        },
+        /** The scene showing now (its name tells automation where it is). */
+        get scene() {
+          return scene;
         },
         /** Jump to the ending (for checking it). */
         ending: () => onRequest('ending'),
