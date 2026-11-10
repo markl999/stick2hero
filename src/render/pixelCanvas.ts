@@ -18,6 +18,11 @@ export class PixelCanvas {
     this.resize(width, height);
   }
 
+  /** HD draws anti-aliased vector paths straight onto the canvas. */
+  get context(): CanvasRenderingContext2D {
+    return this.ctx;
+  }
+
   get width(): number {
     return this.canvas.width;
   }

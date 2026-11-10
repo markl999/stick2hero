@@ -49,6 +49,16 @@ import {
   drawWarden,
   expressionFor,
 } from './era3Draw';
+import {
+  drawCapePixel,
+  drawDebrisPixel,
+  drawDronePixel,
+  drawFinaleHudPixel,
+  drawFinalePixel,
+  drawLampPixel,
+  drawSpeechPixel,
+  drawVentPixel,
+} from './era5Pixel';
 
 /**
  * The low-res pixel eras, one renderer with a palette per stage:
@@ -187,11 +197,26 @@ const NIGHT: PixelStyle = {
 
 function baseStyle(game: Game, colour: 0 | 4 | 16): PixelStyle {
   if (game.level.era === 0) return ERA0;
+  if (game.level.era === 5) return era5Style(game, colour);
   if (game.level.era >= 4) return NIGHT;
   if (game.level.era >= 3 && game.features.has('PARALLAX')) return RICH;
   if (colour === 16) return COLOUR16;
   if (colour === 4) return COLOUR4;
   return MONO;
+}
+
+/**
+ * Era 5 below HD: the look follows the features, so as the Deprecator takes them the game
+ * rolls back through 32-bit night, 16-bit, 16 and 4 colours, the arcade, and Era 0.
+ */
+function era5Style(game: Game, colour: 0 | 4 | 16): PixelStyle {
+  const f = game.features;
+  if (!f.has('FRAME_RATE')) return ERA0;
+  if (colour === 0) return MONO;
+  if (colour === 4) return COLOUR4;
+  if (f.has('LIGHTING')) return NIGHT;
+  if (f.has('PARALLAX')) return RICH;
+  return COLOUR16;
 }
 
 function colourLevel(game: Game): 0 | 4 | 16 {
@@ -232,7 +257,8 @@ export interface Frame {
 
 export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   const s = p.width / VIEW_W;
-  const moment = game.moment;
+  // The finale's moments (removed, reclaimed, restored) don't replay the features' effects.
+  const moment = (game.moment?.kind ?? 'added') === 'added' ? game.moment : null;
   const t = moment?.t ?? Infinity;
   const cam = game.camera;
   const camX = lerp(cam.prevX, cam.x, alpha);
@@ -275,6 +301,11 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
     if (fr.style.night) drawNightSky(fr, depthIntro);
     if (game.enemiesActive && game.warden) drawWarden(fr, game.warden);
     drawTiles(fr);
+    for (const vent of game.vents)
+      if (onScreen(fr, vent.x, vent.y, TILE * 2)) drawVentPixel(fr, vent);
+    for (const lamp of game.lamps) {
+      if (onScreen(fr, lamp.anchorX, lamp.y, TILE * 4)) drawLampPixel(fr, lamp);
+    }
     for (const light of game.lights) {
       if (onScreen(fr, light.x, light.y, TILE * 2)) drawLightSource(fr, light);
     }
@@ -294,7 +325,12 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
       for (const ghost of game.ghosts) {
         if (onScreen(fr, ghost.box.x, ghost.box.y, TILE * 2)) drawGhost(fr, ghost);
       }
+      for (const drone of game.drones) {
+        if (onScreen(fr, drone.x, drone.y, TILE * 2)) drawDronePixel(fr, drone);
+      }
     }
+    drawDebrisPixel(fr);
+    if (game.finale) drawFinalePixel(fr, game.finale);
     drawProjectiles(fr);
     drawPlayer(fr);
     drawParticles(fr);
@@ -322,6 +358,7 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   const npc = game.talkableNpc;
   if (npc) drawTalkPrompt(f, npc);
   drawCutsceneOverlay(f);
+  if (game.finale) drawSpeechPixel(f, game.finale);
   drawHud(f);
   if (moment?.feature === 'SAVE_GAME') drawSaveIcon(f, moment.t);
   drawMoment(f);
@@ -412,6 +449,18 @@ function drawTiles(f: Frame): void {
         continue;
       }
       if (!map.isSolidForDraw(tx, ty)) continue;
+      if (tile === Tile.Cracked) {
+        // A cracked block: a wall with a zigzag through it.
+        p.color(style.tiles);
+        if (style.filled) p.rect(left, top, right - left + 1, bottom - top + 1);
+        else p.strokeRect(left, top, right - left + 1, bottom - top + 1);
+        p.color(style.filled ? style.paper : style.tiles);
+        const w = right - left;
+        p.line(left + w * 0.3, top, left + w * 0.55, top + w * 0.45);
+        p.line(left + w * 0.55, top + w * 0.45, left + w * 0.35, top + w * 0.7);
+        p.line(left + w * 0.35, top + w * 0.7, left + w * 0.6, bottom);
+        continue;
+      }
 
       if (style.filled) {
         const hot = tile === Tile.Hot;
@@ -697,6 +746,7 @@ function drawPlayer(f: Frame): void {
     }
   }
 
+  if (game.features.has('CAPE') && !dead) drawCapePixel(f, px, py, pose);
   p.color(style.player);
   if (game.features.has('OUTFIT') && !dead) {
     // Body under the tunic: legs, then the tunic, then arms over it.
@@ -758,6 +808,8 @@ function drawHud(f: Frame): void {
     p.text('>>', p.width - (textWidth('>>') + 2) * fs, Math.round(p.height * 0.62), fs);
   }
 
+  if (game.finale?.active) drawFinaleHudPixel(f, game.finale);
+
   // Bosses: name card when they wake, then health pips.
   const boss = game.enemiesActive ? (game.boss ?? game.flicker ?? game.warden) : null;
   if (boss && boss.state !== 'waiting' && boss.state !== 'dead') {
@@ -787,12 +839,18 @@ function drawMoment(f: Frame): void {
   if (moment.t > MOMENT_DURATION - 0.5 && Math.floor(moment.t * 8) % 2 === 0) return;
 
   const def = FEATURES[moment.feature];
+  const kind = moment.kind ?? 'added';
+  if (kind === 'restored') return;
+  const heading =
+    kind === 'removed' ? 'FEATURE REMOVED' : kind === 'reclaimed' ? 'RECLAIMED' : 'FEATURE ADDED';
+  const hint =
+    moment.hint ??
+    (kind === 'removed' ? 'WIN IT BACK' : kind === 'reclaimed' ? 'KEEP GOING' : def.hint);
   // Whichever half of the screen the player isn't in.
   const playerY = (game.playerCenterY - f.camY) / VIEW_H;
   const top = Math.round(p.height * (playerY < 0.5 ? 0.58 : 0.15));
   // A plain outlined box so level lines never run through the text.
-  const width =
-    Math.max(textWidth('FEATURE ADDED'), textWidth(def.label) * 2, textWidth(def.hint)) * fs;
+  const width = Math.max(textWidth(heading), textWidth(def.label) * 2, textWidth(hint)) * fs;
   const pad = 3 * fs;
   const box = {
     x: Math.round(p.width / 2 - width / 2) - pad,
@@ -804,9 +862,9 @@ function drawMoment(f: Frame): void {
   p.rect(box.x, box.y, box.w, box.h);
   p.color(style.text);
   p.strokeRect(box.x, box.y, box.w, box.h);
-  p.textCentered('FEATURE ADDED', p.width / 2, top, fs);
+  p.textCentered(heading, p.width / 2, top, fs);
   p.color(moment.feature.startsWith('COLOUR') ? style.pickup : style.text);
   p.textCentered(def.label, p.width / 2, top + (GLYPH_H + 3) * fs, fs * 2);
   p.color(style.text);
-  p.textCentered(def.hint, p.width / 2, top + (GLYPH_H * 3 + 6) * fs, fs);
+  p.textCentered(hint, p.width / 2, top + (GLYPH_H * 3 + 6) * fs, fs);
 }

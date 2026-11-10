@@ -57,6 +57,15 @@ export const WATER_MAX_FALL = 70;
 export const SWIM_STROKE = 210;
 const SWIM_COOLDOWN = 0.22;
 
+/**
+ * CAPE: hold jump while falling to glide. You drift down slowly at running speed, so a
+ * glide from a running jump covers about 6 tiles. Vents' updrafts lift you while gliding.
+ */
+export const GLIDE_FALL = 45;
+const GLIDE_BRAKE = 1600;
+export const UPDRAFT_ACCEL = 1300;
+export const UPDRAFT_MAX = 170;
+
 /** PUNCH: a short jab in front of you. */
 export const PUNCH_TIME = 0.15;
 export const PUNCH_COOLDOWN = 0.3;
@@ -81,11 +90,14 @@ export interface PlayerAbilities {
   wallJump: boolean;
   sword?: boolean;
   dash?: boolean;
+  glide?: boolean;
 }
 
 /** Where the player is, as opposed to what they can do. */
 export interface PlayerEnv {
   water: boolean;
+  /** Inside a vent's updraft column. */
+  updraft?: boolean;
 }
 
 export interface Bounds {
@@ -130,6 +142,10 @@ export class Player {
   landSquash = 0;
   /** Pressed against a wall in the air, sliding down it (HANDS & FEET). */
   wallSliding = false;
+  /** CAPE: gliding this step. */
+  gliding = false;
+  /** Seconds spent gliding, in total (for an achievement). */
+  glideTime = 0;
   /** Position at the start of the last step, for render interpolation. */
   prevX: number;
   prevY: number;
@@ -228,6 +244,7 @@ export class Player {
     this.inWater = env.water;
     this.swimCooldown = Math.max(0, this.swimCooldown - dt);
 
+    if (this.state !== 'normal') this.gliding = false;
     if (this.state === 'climb') {
       this.updateClimb(dt, events);
       return events;
@@ -310,10 +327,28 @@ export class Player {
       this.vy = -JUMP_SPEED * JUMP_CUT;
     }
 
+    // CAPE: holding jump in the air (once you're no longer rising, or in an updraft) glides.
+    const canGlide =
+      abilities.glide === true &&
+      controls.jumpHeld &&
+      !this.onGround &&
+      !env.water &&
+      this.dashT <= 0 &&
+      !this.wallSliding;
+    this.gliding = canGlide && (this.vy >= -40 || this.gliding || env.updraft === true);
+
     // Gravity pauses during a dash, and is gentle in water.
     if (this.dashT > 0) this.vy = 0;
     else if (env.water) this.vy = Math.min(this.vy + GRAVITY * WATER_GRAVITY * dt, WATER_MAX_FALL);
-    else this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+    else {
+      this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+      if (this.gliding && env.updraft) {
+        this.vy = Math.max(-UPDRAFT_MAX, this.vy - (GRAVITY + UPDRAFT_ACCEL) * dt);
+      } else if (this.gliding && this.vy > GLIDE_FALL) {
+        this.vy = Math.max(GLIDE_FALL, this.vy - GLIDE_BRAKE * dt);
+      }
+    }
+    if (this.gliding) this.glideTime += dt;
 
     const hitWall = moveX(this.box, this.vx * dt, map);
     if (hitWall) this.vx = 0;
@@ -338,6 +373,7 @@ export class Player {
     const hitY = moveY(this.box, this.vy * dt, map);
     this.onGround = hitY && this.vy > 0;
     if (hitY) this.vy = 0;
+    if (this.onGround) this.gliding = false;
     events.landed = this.onGround && !wasOnGround;
     if (events.landed) this.landSquash = LAND_SQUASH_TIME;
     if (this.onGround) this.walkDistance += Math.abs(this.box.x - this.prevX);

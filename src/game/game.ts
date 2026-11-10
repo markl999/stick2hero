@@ -18,6 +18,10 @@ import {
 } from './props';
 import { Warden } from './warden';
 import { Cutscene, DeletionWave, Ghost, Light, Particles, type ParticleKind } from './era4';
+import { ACHIEVEMENT, Achievements, RETRO_ACHIEVEMENTS } from './achievements';
+import { Debris, Drone, Lamp, litBy, Vent } from './era5';
+import { Finale } from './finale';
+import { PhotoMode } from './photo';
 import { Pickup } from './pickup';
 import { Player, type Bounds } from './player';
 
@@ -52,6 +56,13 @@ export const ERA0_EXIT_FEATURE: FeatureId = 'FRAME_RATE';
 export interface Moment {
   feature: FeatureId;
   t: number;
+  /**
+   * What happened: a feature was added (the default), or, in the finale, taken away,
+   * won back (banked until the end), or everything restored at once.
+   */
+  kind?: 'added' | 'removed' | 'reclaimed' | 'restored';
+  /** Overrides the feature's own hint on the banner. */
+  hint?: string;
   /** Where it came from in the world (the pickup), for effects like the COLOUR wave. */
   origin?: Point;
 }
@@ -90,10 +101,20 @@ export type SoundName =
   | 'voiceHah'
   | 'voiceOof'
   | 'voiceNpc'
-  | 'voiceBoss';
+  | 'voiceBoss'
+  | 'smash'
+  | 'shatter'
+  | 'zap'
+  | 'alarm'
+  | 'shutter'
+  | 'deprecate'
+  | 'reclaim'
+  | 'beam'
+  | 'restore'
+  | 'achievement';
 
 /** Things the game needs the outside world (scenes) to do. */
-export type GameRequest = 'eraComplete' | 'gameOver' | 'title';
+export type GameRequest = 'eraComplete' | 'gameOver' | 'title' | 'ending';
 
 /** Side effects the game asks for. Kept as an interface so tests can run headless. */
 export interface GameHooks {
@@ -101,6 +122,22 @@ export interface GameHooks {
   sound?(name: SoundName, x?: number): void;
   /** Called after anything that should be persisted (a pickup, a checkpoint). */
   save?(): void;
+  /** RUMBLE: shake the gamepad. Strength 0..1. */
+  rumble?(strength: number, seconds: number): void;
+  /** Is a gamepad plugged in? (Keyboard players get onomatopoeia instead of rumble.) */
+  hasGamepad?(): boolean;
+  /** PHOTO MODE took a picture: save the next rendered frame. */
+  photo?(): void;
+}
+
+/** A short message: on the HUD, or floating in the world if it has a position. */
+export interface Toast {
+  text: string;
+  sub?: string;
+  t: number;
+  life: number;
+  x?: number;
+  y?: number;
 }
 
 export interface GameOptions {
@@ -110,6 +147,8 @@ export interface GameOptions {
   score?: number;
   /** Feet position to resume from (a saved checkpoint). Falls back to the level spawn. */
   checkpoint?: Point | null;
+  /** The Deprecator has already been beaten. */
+  finaleDone?: boolean;
 }
 
 /**
@@ -146,6 +185,22 @@ export class Game {
   readonly deprecator: Point | null;
   /** Seconds since the Chase began (for the "RUN!" card), or null. */
   chaseT: number | null = null;
+  /** Era 5. */
+  readonly lamps: Lamp[];
+  readonly drones: Drone[];
+  readonly vents: Vent[];
+  readonly debris = new Debris();
+  readonly achievements = new Achievements();
+  /** The finale: the Deprecator, if this level has its arena. */
+  readonly finale: Finale | null;
+  /** PHOTO MODE, while it's open (the game is paused). */
+  photo: PhotoMode | null = null;
+  /** Is the player standing in the light? (Drones only see you if you are.) */
+  playerLit = true;
+  /** ADAPTIVE MUSIC: 0 calm … 1 full battle. */
+  musicIntensity = 0;
+  readonly toasts: Toast[] = [];
+  readonly stats = { deaths: 0, smashed: 0, drones: 0 };
   readonly pebbles: Pebble[] = [];
   readonly bombs: Bomb[] = [];
   readonly flags: Flag[];
@@ -176,6 +231,8 @@ export class Game {
   private throwCooldown = 0;
   private dustT = 0;
   private jumps = 0;
+  private lastSmashAttack = -1;
+  private lastRumbleToast = -Infinity;
 
   constructor(options: GameOptions) {
     this.features = options.features;
@@ -219,6 +276,37 @@ export class Game {
     this.switches = this.level.entities
       .filter((e) => e.kind === 'switch')
       .map((e) => new Switch(e.x, e.y));
+    this.lamps = this.level.entities.flatMap((e) => {
+      if (e.kind === 'streetLamp') return [new Lamp('street', e.x, e.y)];
+      if (e.kind !== 'hangingLamp') return [];
+      // Hung from the ceiling above (or the top of the world), with the lamp mid-tile.
+      const tx = Math.floor(e.x / TILE);
+      let ty = Math.floor((e.y - TILE / 2) / TILE) - 1;
+      while (ty >= 0 && !this.map.isSolid(tx, ty)) ty--;
+      const anchorY = (ty + 1) * TILE;
+      return [new Lamp('hanging', e.x, anchorY, e.y - TILE / 2 - anchorY)];
+    });
+    this.drones = this.level.entities
+      .filter((e) => e.kind === 'droneLeft' || e.kind === 'droneRight' || e.kind === 'droneTurning')
+      .map((e) => {
+        // It looks down at the floor about five tiles in front of it.
+        const y = e.y - TILE / 2;
+        const floor = this.floorBelow(e.x, y);
+        const tilt = Math.atan2(Math.max(0, floor - 16 - y), 100);
+        return new Drone(e.x, y, e.kind === 'droneRight' ? 1 : -1, tilt, e.kind === 'droneTurning');
+      });
+    this.vents = this.level.entities
+      .filter((e) => e.kind === 'vent')
+      .map((e) => new Vent(e.x, e.y, this.map));
+    const arena = this.level.entities.find((e) => e.kind === 'finale');
+    this.finale = arena
+      ? new Finale(
+          Math.floor(arena.x / VIEW_W) * VIEW_W,
+          this.floorBelow(arena.x, arena.y - TILE / 2),
+          this.features,
+        )
+      : null;
+    if (this.finale && options.finaleDone) this.finale.state = 'done';
     this.homeScreenX = Math.floor(this.level.spawn.x / VIEW_W) * VIEW_W;
     this.camera = new Camera(this.map.pixelWidth, this.map.pixelHeight, {
       x: this.homeScreenX,
@@ -254,19 +342,34 @@ export class Game {
       this.moment.t += dt;
       if (this.moment.t >= MOMENT_DURATION) {
         const feature = this.moment.feature;
+        const added = (this.moment.kind ?? 'added') === 'added';
         this.moment = null;
-        if (feature === ERA0_EXIT_FEATURE && this.level.era === 0) this.request = 'eraComplete';
-        if (feature === 'TITLE_SCREEN') this.request = 'title';
-        if (feature === 'CUTSCENE' && !this.cutsceneSeen) this.startCutscene();
+        if (!added) {
+          // Finale moments don't trigger the features' own follow-ups.
+        } else if (feature === ERA0_EXIT_FEATURE && this.level.era === 0)
+          this.request = 'eraComplete';
+        else if (feature === 'TITLE_SCREEN') this.request = 'title';
+        else if (feature === 'CUTSCENE' && !this.cutsceneSeen) this.startCutscene();
         // Beating Flicker awards COLOUR (16); the era ends once that's sunk in.
-        if (feature === 'COLOUR_16' && this.flicker?.state === 'dead') this.request = 'eraComplete';
+        else if (feature === 'COLOUR_16' && this.flicker?.state === 'dead') {
+          this.request = 'eraComplete';
+        }
       }
     }
     if (this.chaseT !== null) this.chaseT += dt;
     if (this.features.has('PARTICLES')) this.particles.update(dt);
+    if (this.achievements.update(dt) > 0) this.play('achievement');
+    for (const toast of this.toasts) toast.t += dt;
+    for (let i = this.toasts.length - 1; i >= 0; i--) {
+      if (this.toasts[i].t > this.toasts[i].life) this.toasts.splice(i, 1);
+    }
 
-    // Cutscenes and talking pause the game.
-    if (this.updateCutscene(dt, input) || this.updateDialogue(dt, input)) {
+    // Cutscenes, talking and photo mode pause the game.
+    if (
+      this.updateCutscene(dt, input) ||
+      this.updateDialogue(dt, input) ||
+      this.updatePhoto(dt, input)
+    ) {
       this.player.prevX = this.player.box.x;
       this.player.prevY = this.player.box.y;
       this.camera.update(this.player.feetX, this.playerCenterY);
@@ -296,7 +399,10 @@ export class Game {
       this.updateFlicker(dt);
       this.updateWarden(dt);
       this.updateEra4(dt);
+      this.updateEra5(dt);
+      this.updateFinale(dt);
     }
+    this.updateIntensity(dt);
 
     this.camera.leadTarget = this.features.has('CAMERA') ? this.player.facing * LOOK_AHEAD : 0;
     this.camera.zoomTarget = this.features.has('CAMERA') && this.wave?.active ? CHASE_ZOOM : 1;
@@ -322,14 +428,16 @@ export class Game {
         moveLeft: f.has('LEFT'),
         jump: f.has('JUMP'),
         grab: f.has('ARMS'),
-        punch: f.has('PUNCH'),
+        // You need arms to punch (or swing a sword): the finale takes them away.
+        punch: f.has('PUNCH') && f.has('ARMS'),
         wallJump: f.has('HANDS_FEET'),
-        sword: f.has('SWORD'),
+        sword: f.has('SWORD') && f.has('ARMS'),
         dash: f.has('DASH'),
+        glide: f.has('CAPE'),
       },
       this.map,
       this.bounds(),
-      { water: this.map.inWater(this.player.box) },
+      { water: this.map.inWater(this.player.box), updraft: this.inUpdraft() },
     );
     const p = this.player;
     if (events.jumped) {
@@ -340,7 +448,9 @@ export class Game {
     if (events.landed) {
       this.play('land');
       this.fx('dust', p.feetX, p.feetY, 6, 40, { up: 10 });
+      this.rumble(0.15, 0.08);
     }
+    if (p.glideTime > 4) this.award(ACHIEVEMENT.glide);
     if (events.swam) {
       this.play('splash');
       this.fx('splash', p.feetX, p.box.y + 6, 8, 70, { up: 60 });
@@ -571,6 +681,7 @@ export class Game {
         else if (result === 'killed') {
           this.score += SCORE_KNIGHT;
           this.play('enemyDie', knight.box.x);
+          this.ragdoll(knight.box.x + knight.box.w / 2, knight.box.y + knight.box.h, player.facing);
         } else if (result === 'blocked') this.play('clank', knight.box.x);
       }
       if (canHurt && knight.flinchT <= 0 && overlaps(player.box, knight.box)) this.die();
@@ -771,6 +882,325 @@ export class Game {
     }
   }
 
+  /** PHOTO MODE: P opens it (the game pauses); P or Esc closes it. */
+  private updatePhoto(dt: number, input: ActionState): boolean {
+    const photo = this.photo;
+    if (photo) {
+      if (input.wasPressed('photo') || input.wasPressed('pause')) {
+        this.photo = null;
+        return true;
+      }
+      if (photo.update(dt, input)) {
+        this.play('shutter');
+        this.award(ACHIEVEMENT.photo);
+        this.hooks.photo?.();
+      }
+      return true;
+    }
+    if (
+      !input.wasPressed('photo') ||
+      !this.features.has('PHOTO_MODE') ||
+      this.deathT !== null ||
+      this.moment !== null
+    ) {
+      return false;
+    }
+    this.photo = new PhotoMode();
+    return true;
+  }
+
+  /** Era 5: lamps, shadows, drones, cracked walls, debris. */
+  private updateEra5(dt: number): void {
+    const f = this.features;
+    const p = this.player;
+    const alive = this.deathT === null;
+    const physics = f.has('PHYSICS');
+    const attack = alive ? p.attackBox() : null;
+
+    // Cracked walls: a sword swing or a dash smashes them, once there's PHYSICS.
+    if (attack && p.attackId !== this.lastSmashAttack && this.hitCracked(attack)) {
+      this.lastSmashAttack = p.attackId;
+      if (!physics) this.play('clank');
+    }
+    if (p.dashing && physics) {
+      this.hitCracked({ ...p.box, x: p.box.x + p.facing * 3 });
+    }
+
+    for (const lamp of this.lamps) {
+      if (attack && lamp.kind === 'hanging' && lamp.state === 'on') {
+        if (overlaps(attack, lamp.chainBox) || overlaps(attack, lamp.box)) {
+          if (physics) {
+            lamp.cut();
+            this.play('clang', lamp.x);
+          } else if (p.attackId !== this.lastSmashAttack) {
+            this.lastSmashAttack = p.attackId;
+            this.play('clank', lamp.x);
+          }
+        }
+      }
+      if (lamp.update(dt, this.map)) {
+        this.play('shatter', lamp.x);
+        this.debris.burst('glass', lamp.x, lamp.y - 4, 14, { speed: 200, size: 3, up: 140 });
+        this.fx('spark', lamp.x, lamp.y - 4, 16, 160, { up: 60 });
+        this.shakeCamera(3);
+      }
+    }
+
+    // Is the player in the light?
+    const chestY = p.feetY - 16;
+    this.playerLit =
+      !f.has('LIGHTING') ||
+      litBy(this.lamps, this.map, p.feetX, chestY, f.has('DYNAMIC_SHADOWS')) !== null;
+
+    if (this.enemiesActive) {
+      const canHurt = alive && f.has('DEATH') && this.invulnerableT <= 0;
+      for (const drone of this.drones) {
+        const seen =
+          alive &&
+          this.invulnerableT <= 0 &&
+          this.playerLit &&
+          drone.inView(this.map, p.feetX, chestY);
+        const before = drone.alert;
+        if (drone.update(dt, seen, p.feetX, chestY)) {
+          this.play('zap', drone.x);
+          this.shakeCamera(4);
+          if (canHurt) this.die();
+        }
+        if (before < 0.3 && drone.alert >= 0.3) this.play('alarm', drone.x);
+        if (drone.alive && attack && overlaps(attack, drone.box)) {
+          drone.destroy();
+          this.stats.drones++;
+          this.score += SCORE_KNIGHT;
+          this.play('enemyDie', drone.x);
+          this.fx('spark', drone.x, drone.y, 18, 150, { up: 40 });
+          if (physics) this.debris.burst('metal', drone.x, drone.y, 7, { speed: 140, size: 4 });
+          this.award(ACHIEVEMENT.drone);
+        }
+      }
+    }
+
+    if (this.debris.bodies.length > 0) {
+      this.debris.update(dt, this.map, alive ? { box: p.box, vx: p.vx } : undefined);
+    }
+  }
+
+  /** Smash every cracked tile the box touches (and the cracked tiles joined to them). */
+  private hitCracked(box: { x: number; y: number; w: number; h: number }): boolean {
+    const tx0 = Math.floor(box.x / TILE);
+    const tx1 = Math.floor((box.x + box.w - 1e-6) / TILE);
+    const ty0 = Math.floor(box.y / TILE);
+    const ty1 = Math.floor((box.y + box.h - 1e-6) / TILE);
+    let hit = false;
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (this.map.tileAt(tx, ty) !== Tile.Cracked) continue;
+        hit = true;
+        if (this.features.has('PHYSICS')) this.smash(tx, ty);
+      }
+    }
+    return hit;
+  }
+
+  private smash(tx: number, ty: number): void {
+    const queue: [number, number][] = [[tx, ty]];
+    let count = 0;
+    while (queue.length > 0 && count < 16) {
+      const [x, y] = queue.pop()!;
+      if (this.map.tileAt(x, y) !== Tile.Cracked) continue;
+      this.map.setTile(x, y, Tile.Empty);
+      count++;
+      const cx = x * TILE + TILE / 2;
+      const cy = y * TILE + TILE / 2;
+      this.debris.burst('concrete', cx, cy, 7, { speed: 190, size: 6, up: 100 });
+      this.fx('dust', cx, cy, 8, 60, { up: 10, life: 0.9, size: 3 });
+      queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+    this.stats.smashed += count;
+    this.play('smash', tx * TILE);
+    this.shakeCamera(5);
+    this.rumble(0.8, 0.3);
+    this.award(ACHIEVEMENT.smash);
+  }
+
+  /** PHYSICS: a defeated robot falls apart into tumbling parts. */
+  private ragdoll(x: number, y: number, dir: number): void {
+    if (!this.features.has('PHYSICS')) return;
+    const parts: [number, number, number, number][] = [
+      [0, -22, 8, 8],
+      [0, -12, 10, 12],
+      [-4, -4, 3, 9],
+      [4, -4, 3, 9],
+      [-6, -14, 3, 8],
+      [6, -14, 3, 8],
+    ];
+    for (const [dx, dy, w, h] of parts) {
+      this.debris.add({
+        kind: 'robot',
+        x: x + dx,
+        y: y + dy,
+        vx: dir * (60 + Math.random() * 90) + dx * 8,
+        vy: -150 - Math.random() * 120,
+        angle: 0,
+        spin: (Math.random() - 0.5) * 16,
+        w,
+        h,
+      });
+    }
+  }
+
+  /** The finale: the Deprecator takes the features away, and you take them back. */
+  private updateFinale(dt: number): void {
+    const fin = this.finale;
+    if (!fin || fin.state === 'done') return;
+    const p = this.player;
+    const alive = this.deathT === null;
+    if (fin.state === 'waiting') {
+      if (!alive || p.box.x <= fin.arenaX + 8) return;
+      fin.start();
+      this.bossIntroT = 0;
+      this.checkpoint = { x: fin.arenaX + 40, y: fin.floorY };
+      this.hooks.save?.();
+    }
+
+    const ev = fin.update(dt, p.feetX);
+    if (ev.stripped) {
+      this.moment = { feature: ev.stripped.reclaim, t: 0, kind: 'removed' };
+      this.play('deprecate');
+      this.shakeCamera(8);
+      this.bombs.length = 0;
+      this.hooks.save?.();
+    }
+    if (ev.bits) for (const bit of ev.bits) this.bombs.push(new Bomb(bit.x, bit.y));
+    if (ev.beamStrike) {
+      this.play('beam');
+      this.shakeCamera(3);
+    }
+    if (ev.wave) this.play('glitch', fin.box.x);
+    if (ev.restored) {
+      this.moment = { feature: 'HD', t: 0, kind: 'restored' };
+      this.play('restore');
+      this.award(ACHIEVEMENT.deprecator);
+      this.award(ACHIEVEMENT.hero);
+      this.score += SCORE_BOSS * 4;
+      this.hooks.save?.();
+    }
+    if (ev.done) this.request = 'ending';
+
+    const attack = alive ? p.attackBox() : null;
+    if (attack && overlaps(attack, fin.box)) {
+      const result = fin.hit(p.attackId);
+      const bx = fin.box.x + fin.box.w / 2;
+      if (result === 'damaged' || result === 'killed') {
+        this.score += SCORE_BOSS_HIT;
+        this.play(result === 'killed' ? 'bossDie' : 'bossHit', bx);
+        this.fx('glitch', bx, fin.box.y + 20, 24, 120);
+        this.shakeCamera(result === 'killed' ? 8 : 3);
+      } else if (result === 'blocked') {
+        this.play('clank', bx);
+      }
+    }
+    const got = alive ? fin.collect(p.box) : null;
+    if (got) {
+      this.score += SCORE_PICKUP;
+      // The last phase gives your arms back for real; the others bank the feature.
+      const real = fin.state === 'last';
+      this.moment = {
+        feature: got,
+        t: 0,
+        kind: real ? 'added' : 'reclaimed',
+        hint: real ? 'NOW PUNCH IT: X OR J' : undefined,
+      };
+      this.play(real ? 'pickup' : 'reclaim');
+      this.hooks.save?.();
+    }
+    const canHurt = alive && this.features.has('DEATH') && this.invulnerableT <= 0 && !p.dashing;
+    if (canHurt && fin.hurts(p.box)) {
+      this.fx('glitch', p.feetX, p.box.y + 14, 20, 80);
+      this.die();
+    }
+  }
+
+  /** ADAPTIVE MUSIC: how much danger there is, eased (quick to rise, slow to settle). */
+  private updateIntensity(dt: number): void {
+    let target = 0;
+    if (this.activeArenaX !== null) target = 1;
+    if (this.finale?.state === 'restore') target = 0.6;
+    const p = this.player;
+    const near = (x: number) => Math.abs(x - p.feetX) < VIEW_W * 0.75;
+    if (this.enemiesActive) {
+      for (const drone of this.drones) {
+        if (drone.alive && near(drone.x)) target = Math.max(target, 0.3 + drone.alert * 0.7);
+      }
+      for (const knight of this.knights) {
+        if (knight.alive && near(knight.box.x)) {
+          target = Math.max(target, knight.charging ? 0.85 : 0.5);
+        }
+      }
+    }
+    const rate = target > this.musicIntensity ? 3 : 0.5;
+    this.musicIntensity += (target - this.musicIntensity) * Math.min(1, rate * dt);
+  }
+
+  /** CAPE: is the player in a vent's updraft? */
+  private inUpdraft(): boolean {
+    if (this.vents.length === 0) return false;
+    const p = this.player;
+    return this.vents.some((v) => {
+      const c = v.column;
+      return p.feetX > c.x && p.feetX < c.x + c.w && p.feetY > c.y && p.box.y < c.y + c.h;
+    });
+  }
+
+  /**
+   * RUMBLE: shake the gamepad. Without one, the next best thing: the word itself pops up
+   * where it happened.
+   */
+  private rumble(strength: number, seconds = 0.2): void {
+    if (!this.features.has('RUMBLE')) return;
+    this.hooks.rumble?.(Math.min(1, strength), seconds);
+    if (this.hooks.hasGamepad?.()) return;
+    if (strength < 0.3 || this.time - this.lastRumbleToast < 0.7) return;
+    this.lastRumbleToast = this.time;
+    const words = ['*RUMBLE*', '*BZZZT*', '*VRRRM*', '*SHAKE*', '*BRRRR*'];
+    const p = this.player;
+    this.toasts.push({
+      text: words[Math.floor(Math.random() * words.length)],
+      t: 0,
+      life: 0.9,
+      x: p.feetX + (Math.random() - 0.5) * 30,
+      y: p.box.y - 8,
+    });
+  }
+
+  /** RUMBLE's moment: a long buzz, or, on a keyboard, an apology. */
+  private rumbleMoment(): void {
+    if (this.hooks.hasGamepad?.()) {
+      this.hooks.rumble?.(1, 1.2);
+      this.toasts.push({ text: 'BRRRRRRRRRRR', t: 0, life: 2.5 });
+    } else {
+      this.toasts.push({
+        text: 'NO GAMEPAD DETECTED',
+        sub: 'PLEASE SHAKE YOUR KEYBOARD MANUALLY',
+        t: 0,
+        life: 4.5,
+      });
+    }
+    this.award(ACHIEVEMENT.rumble);
+  }
+
+  /** ACHIEVEMENTS, once they exist. */
+  private award(name: string): void {
+    if (!this.features.has('ACHIEVEMENTS')) return;
+    this.achievements.award(name);
+  }
+
+  /** Where a Game Over sends you back to: the finale's arena, once it's begun. */
+  get retryCheckpoint(): Point | null {
+    const fin = this.finale;
+    if (!fin || fin.state === 'waiting' || fin.state === 'done') return null;
+    return { x: fin.arenaX + 40, y: fin.floorY };
+  }
+
   private startCutscene(): void {
     this.cutscene = new Cutscene();
     this.cutsceneSeen = true;
@@ -828,6 +1258,7 @@ export class Game {
   /** CAMERA: screen shake, only once you have it. */
   private shakeCamera(amount: number): void {
     if (this.features.has('CAMERA')) this.camera.shake = Math.max(this.camera.shake, amount);
+    this.rumble(amount / 8, 0.12 + amount * 0.03);
   }
 
   /** VOICE: grunts and speech, only once you have it. */
@@ -858,6 +1289,7 @@ export class Game {
   private die(): void {
     if (this.deathT !== null) return;
     this.deathT = 0;
+    this.stats.deaths++;
     this.player.vx = 0;
     this.player.vy = 0;
     this.play('die');
@@ -883,6 +1315,8 @@ export class Game {
       }
     }
     this.bombs.length = 0;
+    this.finale?.reset();
+    for (const drone of this.drones) drone.calm();
     this.camera.lockX = null;
     // The Chase starts over, a little behind where you respawn.
     if (this.wave?.active) this.wave.start(this.checkpoint.x);
@@ -899,6 +1333,8 @@ export class Game {
       if (pickup.feature === 'SCORE') this.displayScore = 0;
       this.moment = { feature: pickup.feature, t: 0, origin: { x: pickup.x, y: pickup.y } };
       this.play('pickup');
+      if (pickup.feature === 'ACHIEVEMENTS') this.achievements.awardAll(RETRO_ACHIEVEMENTS);
+      if (pickup.feature === 'RUMBLE') this.rumbleMoment();
       // Pickups sit on the ground, so the bottom of their tile is a safe place to resume.
       this.checkpoint = { x: pickup.x, y: pickup.y + TILE / 2 };
       this.hooks.save?.();
@@ -924,6 +1360,7 @@ export class Game {
 
   /** The boss currently fighting, if any: its arena locks the camera and the player in. */
   get activeArenaX(): number | null {
+    if (this.finale?.locksArena) return this.finale.arenaX;
     for (const boss of [this.boss, this.flicker, this.warden]) {
       if (boss && boss.state !== 'waiting' && boss.state !== 'dead') return boss.arenaX;
     }

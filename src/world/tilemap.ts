@@ -10,6 +10,7 @@ import type { Era, FeatureId } from '../core/features';
  *   'D'  door (solid until a switch on the same screen is hit)
  *   'w'  water (swim in it)
  *   'h'  a hollow wall: drawn like a wall, but you can walk through it (TRANSPARENCY shows it)
+ *   '%'  a cracked wall: solid until PHYSICS lets you smash it (sword or dash)
  *   'P'  player spawn (feet at the bottom of the tile, horizontally centred)
  *   'e'  walker enemy (exists once ENEMIES does)
  *   'F'  checkpoint flag (works once CHECKPOINTS exists)
@@ -19,6 +20,11 @@ import type { Era, FeatureId } from '../core/features';
  *   't'  torch (a light),  'b'  brazier (light it by touching it; it's a checkpoint too)
  *   'C'  where the Chase starts,  'X'  the Chase's finish line,  'Z'  where the Deprecator appears
  *   'B'  The Block (Era 1 boss),  'V'  Flicker (Era 2 boss),  'W'  The Warden (Era 3 boss)
+ *   'l'  street lamp,  'L'  hanging lamp (hangs from the ceiling above; PHYSICS lets you cut it)
+ *   '<' / '>'  security drone looking left / right (Era 5: sees you only in the light)
+ *   '*'  security drone that turns: left for a while, then right
+ *   'u'  vent: an updraft column rises from it (lifts you while gliding)
+ *   'R'  the Deprecator's arena (the finale)
  *   any key of `npcs` → a character you can talk to (once NPCS exists)
  *   Entity positions are feet positions: bottom of the tile, horizontally centred.
  *   any key of `pickups` → a Feature pickup centred in that tile
@@ -54,7 +60,14 @@ export type EntityKind =
   | 'brazier'
   | 'chase'
   | 'exit'
-  | 'deprecator';
+  | 'deprecator'
+  | 'streetLamp'
+  | 'hangingLamp'
+  | 'droneLeft'
+  | 'droneRight'
+  | 'droneTurning'
+  | 'vent'
+  | 'finale';
 
 export interface EntitySpawn {
   kind: EntityKind;
@@ -89,6 +102,7 @@ export const Tile = {
   Door: 4,
   Water: 5,
   Hollow: 6,
+  Cracked: 7,
 } as const;
 export type Tile = (typeof Tile)[keyof typeof Tile];
 
@@ -99,7 +113,7 @@ export const SPIKE_INSET = 4;
 /** Standing on the very edge of a hot brick is safe. */
 export const HOT_INSET = 3;
 
-const SOLID_TILES: ReadonlySet<number> = new Set([Tile.Solid, Tile.Hot, Tile.Door]);
+const SOLID_TILES: ReadonlySet<number> = new Set([Tile.Solid, Tile.Hot, Tile.Door, Tile.Cracked]);
 
 export class TileMap implements SolidQuery {
   constructor(
@@ -197,6 +211,13 @@ const ENTITY_CHARS: Record<string, EntityKind> = {
   V: 'flicker',
   F: 'flag',
   s: 'switch',
+  l: 'streetLamp',
+  L: 'hangingLamp',
+  '<': 'droneLeft',
+  '>': 'droneRight',
+  '*': 'droneTurning',
+  u: 'vent',
+  R: 'finale',
 };
 
 export function parseLevel(def: LevelDef): ParsedLevel {
@@ -222,6 +243,7 @@ export function parseLevel(def: LevelDef): ParsedLevel {
       else if (ch === 'D') tiles[ty * width + tx] = Tile.Door;
       else if (ch === 'w') tiles[ty * width + tx] = Tile.Water;
       else if (ch === 'h') tiles[ty * width + tx] = Tile.Hollow;
+      else if (ch === '%') tiles[ty * width + tx] = Tile.Cracked;
       else if (ch === 'P') spawn = feet;
       else if (ch in ENTITY_CHARS) entities.push({ kind: ENTITY_CHARS[ch], ...feet });
       else if (def.npcs && ch in def.npcs) entities.push({ kind: 'npc', id: ch, ...feet });

@@ -55,15 +55,28 @@ export function drawNightSky(f: Frame, depthIntro: number | null): void {
   p.disc(p.width * 0.78 - f.camX * 0.02 * s, h * 0.2, 22 * s);
   p.color(mix('#060a1c', '#2b3d6e', 0.25));
   p.disc(p.width * 0.78 - f.camX * 0.02 * s + 8 * s, h * 0.18, 18 * s);
-  // Ruins on the horizon.
+  // Ruins on the horizon (Era 5: a city skyline, windows lit).
+  const city = game.level.era === 5;
   p.color('#1a2340');
   const step = Math.max(1, Math.round(s));
   for (let x = 0; x < p.width; x += step) {
     const wx = f.camX * 0.15 + x / s;
     const block = Math.floor(wx / 26);
-    const height = hash(block) > 0.45 ? 30 + hash(block + 9) * 50 : 12 + hash(block + 3) * 10;
+    const height = city
+      ? 40 + hash(block + 9) * 70
+      : hash(block) > 0.45
+        ? 30 + hash(block + 9) * 50
+        : 12 + hash(block + 3) * 10;
     const top = Math.round(h * 0.78 - height * s);
     p.rect(x, top, step, h - top);
+  }
+  if (city) {
+    p.color('#ffcf6b');
+    for (let i = 0; i < 70; i++) {
+      const x =
+        (((hash(i + 900) * p.width * 1.3 - f.camX * 0.15 * s) % p.width) + p.width) % p.width;
+      p.rect(x, h * (0.5 + hash(i + 950) * 0.25), Math.max(1, s), Math.max(1, s));
+    }
   }
 
   if (!game.features.has('DEPTH')) return;
@@ -260,6 +273,9 @@ export function drawLighting(f: Frame): void {
   for (const light of game.lights) {
     if (light.lit)
       lights.push({ x: X(light.x), y: Y(light.flameY), r: light.radius * s * flicker(light.x) });
+  }
+  for (const lamp of game.lamps) {
+    if (lamp.lit) lights.push({ x: X(lamp.x), y: Y(lamp.y), r: lamp.radius * s });
   }
   // Things that glow a little on their own.
   for (const ghost of game.ghosts) {

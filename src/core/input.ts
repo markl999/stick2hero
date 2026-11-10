@@ -4,7 +4,7 @@
  */
 
 export type Action =
-  'left' | 'right' | 'up' | 'down' | 'jump' | 'attack' | 'special' | 'dash' | 'pause';
+  'left' | 'right' | 'up' | 'down' | 'jump' | 'attack' | 'special' | 'dash' | 'pause' | 'photo';
 
 /** What game logic reads. Kept minimal so tests can fake it. */
 export interface ActionState {
@@ -30,6 +30,7 @@ const KEYMAP: Record<string, Action[]> = {
   ShiftRight: ['dash'],
   KeyL: ['dash'],
   Escape: ['pause'],
+  KeyP: ['photo'],
 };
 
 // Standard Gamepad mapping button indices.
@@ -40,6 +41,7 @@ const PAD_BUTTONS: Record<number, Action[]> = {
   4: ['dash'], // LB
   5: ['dash'], // RB
   7: ['dash'], // RT
+  8: ['photo'], // Back / Select
   9: ['pause'], // Start
   12: ['up'],
   13: ['down'],

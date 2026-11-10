@@ -11,10 +11,20 @@ export interface SaveData {
   checkpoint: { x: number; y: number } | null;
   /** Index of the current era's level. */
   era: number;
+  /** The Deprecator has been beaten. */
+  cleared: boolean;
 }
 
 export function defaultSave(): SaveData {
-  return { version: 1, features: [], score: 0, introSeen: false, checkpoint: null, era: 0 };
+  return {
+    version: 1,
+    features: [],
+    score: 0,
+    introSeen: false,
+    checkpoint: null,
+    era: 0,
+    cleared: false,
+  };
 }
 
 function storage(): Storage | null {
@@ -40,6 +50,7 @@ export function loadSave(): SaveData {
       introSeen: data.introSeen === true,
       checkpoint: isPoint(data.checkpoint) ? data.checkpoint : null,
       era: Number.isInteger(data.era) && (data.era as number) >= 0 ? (data.era as number) : 0,
+      cleared: data.cleared === true,
     };
   } catch {
     return defaultSave();

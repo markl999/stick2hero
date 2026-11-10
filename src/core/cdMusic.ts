@@ -6,6 +6,11 @@ import { noteToHz } from './music';
  *   bars 1–8   pads, bass, breakbeat and a quiet arpeggio
  *   bars 9–16  the lead melody comes in (vibrato, echo), drums push harder
  * Everything goes through a reverb so it sounds "produced" next to the chiptune.
+ *
+ * ADAPTIVE MUSIC (Era 5) adds three layers on top, faded in by how much danger there is:
+ *   0.2+  percussion: sixteenth-note hats, shaker and tom fills
+ *   0.45+ drive: distorted power-chord stabs and a pumping octave bass
+ *   0.7+  high: a fast counter-arpeggio an octave up, and crashes
  */
 
 const BPM = 96;
@@ -53,6 +58,10 @@ export class CdMusic {
   private timer: ReturnType<typeof setInterval> | null = null;
   private step = 0;
   private nextTime = 0;
+  /** ADAPTIVE MUSIC: the layers, and how much danger there is (0..1). */
+  private readonly layers: Record<'perc' | 'drive' | 'high', GainNode>;
+  private intensity = 0;
+  private drive: WaveShaperNode;
 
   constructor(
     private readonly ctx: AudioContext,
@@ -79,6 +88,32 @@ export class CdMusic {
     echoOut.gain.value = 0.4;
     this.echo.connect(feedback).connect(this.echo);
     this.echo.connect(echoOut).connect(this.out);
+
+    const layer = () => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(this.out);
+      return g;
+    };
+    this.layers = { perc: layer(), drive: layer(), high: layer() };
+    this.drive = ctx.createWaveShaper();
+    const curve = new Float32Array(512);
+    for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh((i / 256 - 1) * 5);
+    this.drive.curve = curve;
+    this.drive.connect(this.layers.drive);
+  }
+
+  /** ADAPTIVE MUSIC: 0 is the plain track; 1 is everything. */
+  setIntensity(value: number): void {
+    this.intensity = Math.max(0, Math.min(1, value));
+    const t = this.ctx.currentTime;
+    const smooth = (a: number, b: number) => {
+      const k = Math.max(0, Math.min(1, (this.intensity - a) / (b - a)));
+      return k * k * (3 - 2 * k);
+    };
+    this.layers.perc.gain.setTargetAtTime(smooth(0.2, 0.45), t, 0.5);
+    this.layers.drive.gain.setTargetAtTime(smooth(0.45, 0.7), t, 0.5);
+    this.layers.high.gain.setTargetAtTime(smooth(0.7, 0.95), t, 0.5);
   }
 
   get playing(): boolean {
@@ -152,6 +187,62 @@ export class CdMusic {
     else if (drum === 'S') this.snare(t);
     else if (drum === 'H') this.hat(t, 0.03);
     else if (drum === 'O') this.hat(t, 0.12);
+
+    // ADAPTIVE MUSIC layers (only scheduled while they're audible).
+    if (this.intensity > 0.15) {
+      const perc = this.layers.perc;
+      this.noiseHit(t, 0.025, s % 2 ? 0.03 : 0.045, 9000, 'highpass', 0, perc);
+      if (s % 4 === 2) this.noiseHit(t, 0.06, 0.05, 5000, 'bandpass', 0.1, perc);
+      if (bar % 4 === 3 && s >= 12) this.tom(t, 220 - (s - 12) * 30, perc);
+    }
+    if (this.intensity > 0.4) {
+      if ([0, 3, 6, 10, 12].includes(s)) {
+        const root = noteToHz(chord.bass) * 4;
+        this.stab(root, t, SIXTEENTH * (s === 12 ? 3 : 1.6));
+      }
+      if (s % 2 === 0) {
+        this.bass(
+          noteToHz(chord.bass) * (s % 4 === 0 ? 1 : 2),
+          t,
+          SIXTEENTH * 0.9,
+          this.layers.drive,
+        );
+      }
+    }
+    if (this.intensity > 0.65) {
+      const note = chord.arp[(s + bar) % chord.arp.length];
+      this.pluck(noteToHz(note) * 2, t, SIXTEENTH * 0.9, 0.03, this.layers.high);
+      if (s === 0 && bar % 2 === 0)
+        this.noiseHit(t, 1.2, 0.07, 6000, 'highpass', 0.4, this.layers.high);
+    }
+  }
+
+  /** A distorted power chord (root and fifth). */
+  private stab(hz: number, t: number, duration: number): void {
+    const env = this.ctx.createGain();
+    env.gain.setValueAtTime(0.05, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    env.connect(this.drive);
+    for (const mult of [1, 1.5, 2]) {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = hz * mult;
+      osc.connect(env);
+      osc.start(t);
+      osc.stop(t + duration + 0.02);
+    }
+  }
+
+  private tom(t: number, hz: number, destination: AudioNode): void {
+    const osc = this.ctx.createOscillator();
+    osc.frequency.setValueAtTime(hz, t);
+    osc.frequency.exponentialRampToValueAtTime(hz * 0.5, t + 0.18);
+    const env = this.voice(destination, 0.3);
+    env.gain.setValueAtTime(0.18, t);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.connect(env);
+    osc.start(t);
+    osc.stop(t + 0.24);
   }
 
   private voice(destination: AudioNode, reverbSend: number): GainNode {
@@ -187,12 +278,12 @@ export class CdMusic {
     }
   }
 
-  private bass(hz: number, t: number, duration: number): void {
+  private bass(hz: number, t: number, duration: number, destination: AudioNode = this.out): void {
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(900, t);
     filter.frequency.exponentialRampToValueAtTime(180, t + duration);
-    const env = this.voice(this.out, 0);
+    const env = this.voice(destination, 0);
     env.gain.setValueAtTime(0.16, t);
     env.gain.exponentialRampToValueAtTime(0.001, t + duration);
     filter.connect(env);
@@ -209,11 +300,17 @@ export class CdMusic {
     }
   }
 
-  private pluck(hz: number, t: number, duration: number, volume: number): void {
+  private pluck(
+    hz: number,
+    t: number,
+    duration: number,
+    volume: number,
+    destination: AudioNode = this.out,
+  ): void {
     const osc = this.ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.value = hz;
-    const env = this.voice(this.out, 0.5);
+    const env = this.voice(destination, 0.5);
     env.gain.setValueAtTime(volume, t);
     env.gain.exponentialRampToValueAtTime(0.001, t + duration);
     osc.connect(env);
@@ -285,13 +382,14 @@ export class CdMusic {
     cutoff: number,
     type: BiquadFilterType,
     reverbSend: number,
+    destination: AudioNode = this.out,
   ): void {
     const source = this.ctx.createBufferSource();
     source.buffer = this.noise();
     const filter = this.ctx.createBiquadFilter();
     filter.type = type;
     filter.frequency.value = cutoff;
-    const env = this.voice(this.out, reverbSend);
+    const env = this.voice(destination, reverbSend);
     env.gain.setValueAtTime(volume, t);
     env.gain.exponentialRampToValueAtTime(0.001, t + duration);
     source.connect(filter).connect(env);

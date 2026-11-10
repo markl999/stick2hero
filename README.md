@@ -17,11 +17,14 @@ npm run build   # static build in dist/
 
 **Controls:** ← → / A D to move · Space / W / ↑ to jump (and climb, once you have arms) · ↓ to
 let go of a ledge · X / J to punch (or swing a sword) · C / K to throw (hold ↑ to throw upwards) ·
-Shift / L to dash · ↑ to talk · jump to swim upwards in water · gamepad supported.
+Shift / L to dash · ↑ to talk · jump to swim upwards in water · hold jump in the air to glide
+(once you have a cape) · P for photo mode · gamepad supported.
 Each ability only works once you've collected it.
 
 ## Status
 
-M4 is done: the tape-loader intro and five playable eras. BOOT, ARCADE (The Block), 8-BIT
-(Flicker), 16-BIT (The Warden) and 32-BIT (the Deprecator's cutscene and the Chase). Next: M5,
-Era 5 (MODERN) and the finale.
+M5 is done: the whole game plays from the tape loader to the ending. BOOT, ARCADE (The Block),
+8-BIT (Flicker), 16-BIT (The Warden), 32-BIT (the cutscene and the Chase) and MODERN: HD, real
+shadows and stealth, physics, the cape, far too much bloom, then the Deprecator, who rolls the
+game back to a white screen while you win it back. Next: M6, secrets, the Feature Menu,
+accessibility and polish.

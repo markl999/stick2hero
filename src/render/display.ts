@@ -1,5 +1,6 @@
 import { Application, CanvasSource, Container, RenderTexture, Sprite, Texture } from 'pixi.js';
 import { PixelCanvas } from './pixelCanvas';
+import { PostFxFilter, type PostFx } from './postFx';
 
 export interface Resolution {
   width: number;
@@ -15,6 +16,12 @@ export const RESOLUTIONS = {
   FULL_HD: { width: 1920, height: 1080 },
 } as const satisfies Record<string, Resolution>;
 
+/** HD draws at the screen's own resolution (up to this wide). */
+const NATIVE_MAX_W = 1920;
+
+/** A scene asks for a fixed internal resolution, or 'native' (HD: whatever the screen is). */
+export type ResolutionRequest = Resolution | 'native';
+
 /**
  * The render pipeline:
  *   world layers (for now just the pixel canvas)
@@ -29,12 +36,17 @@ export class Display {
   private pixelSprite: Sprite;
   private target: RenderTexture;
   private resolution: Resolution;
+  private request: ResolutionRequest;
+  /** HD: smooth scaling (and any size), instead of crisp whole-number pixel scaling. */
+  private smooth = false;
+  private postFx: PostFxFilter | null = null;
 
   private constructor(
     private readonly app: Application,
     initial: Resolution,
   ) {
     this.resolution = initial;
+    this.request = initial;
     this.pixel = new PixelCanvas(initial.width, initial.height);
     this.pixelSprite = new Sprite(this.makePixelTexture());
     this.world.addChild(this.pixelSprite);
@@ -64,7 +76,9 @@ export class Display {
     return this.resolution;
   }
 
-  setResolution(res: Resolution): void {
+  setResolution(request: ResolutionRequest): void {
+    this.request = request;
+    const res = request === 'native' ? this.nativeResolution() : request;
     if (res.width === this.resolution.width && res.height === this.resolution.height) return;
     this.resolution = res;
     this.pixel.resize(res.width, res.height);
@@ -81,9 +95,46 @@ export class Display {
     this.layout();
   }
 
+  /** The window's size in device pixels, 16:9, capped. */
+  private nativeResolution(): Resolution {
+    const dpr = this.app.renderer.resolution;
+    const { width: W, height: H } = this.app.screen;
+    const fitW = Math.min(W, (H * 16) / 9) * dpr;
+    const width = Math.max(320, Math.min(NATIVE_MAX_W, Math.round(fitW / 16) * 16));
+    return { width, height: Math.round((width * 9) / 16) };
+  }
+
+  /** HD scales smoothly; the pixel eras scale by whole numbers with no filtering. */
+  setSmooth(smooth: boolean): void {
+    if (smooth === this.smooth) return;
+    this.smooth = smooth;
+    const mode = smooth ? 'linear' : 'nearest';
+    this.pixelSprite.texture.source.scaleMode = mode;
+    this.target.source.scaleMode = mode;
+    this.layout();
+  }
+
+  /** BLOOM / POST-FX over the final picture, or null for none. */
+  setPostFx(fx: PostFx | null): void {
+    if (!fx) {
+      if (this.screen.filters) this.screen.filters = null;
+      return;
+    }
+    this.postFx ??= new PostFxFilter();
+    this.postFx.set(fx);
+    if (!this.screen.filters) this.screen.filters = [this.postFx];
+  }
+
+  /** PHOTO MODE: the frame as it's on screen (post-FX and all), as a PNG. */
+  async capture(): Promise<Blob | null> {
+    const canvas = this.app.renderer.extract.canvas({ target: this.screen }) as HTMLCanvasElement;
+    return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
+  }
+
   /** Call when the window size changes. */
   resize(width: number, height: number): void {
     this.app.renderer.resize(width, height);
+    if (this.request === 'native') this.setResolution('native');
     this.layout();
   }
 
@@ -95,12 +146,14 @@ export class Display {
   }
 
   private makePixelTexture(): Texture {
-    const source = new CanvasSource({ resource: this.pixel.canvas, scaleMode: 'nearest' });
+    const scaleMode = this.smooth ? 'linear' : 'nearest';
+    const source = new CanvasSource({ resource: this.pixel.canvas, scaleMode });
     return new Texture({ source });
   }
 
   private makeTarget(res: Resolution): RenderTexture {
-    return RenderTexture.create({ width: res.width, height: res.height, scaleMode: 'nearest' });
+    const scaleMode = this.smooth ? 'linear' : 'nearest';
+    return RenderTexture.create({ width: res.width, height: res.height, scaleMode });
   }
 
   /** Largest integer scale that fits (fractional only if the window is smaller than 1×). */
@@ -108,7 +161,7 @@ export class Display {
     const { width: W, height: H } = this.app.screen;
     const { width: w, height: h } = this.resolution;
     const fit = Math.min(W / w, H / h);
-    const scale = fit >= 1 ? Math.floor(fit) : fit;
+    const scale = fit >= 1 && !this.smooth ? Math.floor(fit) : fit;
     this.screen.scale.set(scale);
     this.screen.position.set(Math.round((W - w * scale) / 2), Math.round((H - h * scale) / 2));
   }

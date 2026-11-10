@@ -50,7 +50,17 @@ export type SfxName =
   | 'voiceHah'
   | 'voiceOof'
   | 'voiceNpc'
-  | 'voiceBoss';
+  | 'voiceBoss'
+  | 'smash'
+  | 'shatter'
+  | 'zap'
+  | 'alarm'
+  | 'shutter'
+  | 'deprecate'
+  | 'reclaim'
+  | 'beam'
+  | 'restore'
+  | 'achievement';
 
 /** Vowel formants (Hz): F1, F2, F3. */
 const VOWELS = {
@@ -129,6 +139,11 @@ export class AudioEngine {
       this.chip?.stop();
       this.cd?.stop();
     }
+  }
+
+  /** ADAPTIVE MUSIC: how much danger there is (0..1). Only the CD track listens. */
+  setIntensity(value: number): void {
+    this.cd?.setIntensity(value);
   }
 
   get ready(): boolean {
@@ -307,6 +322,75 @@ export class AudioEngine {
         this.vowel(t, 0.16, v, v, 70 + Math.random() * 15, 62, 0.35, false, true);
         break;
       }
+      case 'smash':
+        // Concrete giving way: a thump, then crumbling.
+        this.sweep('sine', 120, 40, t, 0.35, 0.35);
+        this.noise(t, 0.5, 0.4, 900, 'lowpass', 200);
+        for (let i = 0; i < 6; i++) {
+          this.noise(t + 0.06 + i * 0.05 + Math.random() * 0.03, 0.06, 0.15, 2500, 'bandpass');
+        }
+        break;
+      case 'shatter':
+        // Glass: a bright crash and tinkling bits.
+        this.noise(t, 0.3, 0.3, 5000, 'highpass');
+        for (let i = 0; i < 9; i++) {
+          const hz = 2500 + Math.random() * 3500;
+          this.sweep('sine', hz, hz * 0.97, t + i * 0.035 + Math.random() * 0.04, 0.12, 0.05);
+        }
+        break;
+      case 'zap':
+        this.sweep('sawtooth', 2400, 120, t, 0.22, 0.14);
+        this.sweep('square', 1800, 90, t, 0.18, 0.08);
+        this.noise(t, 0.2, 0.18, 3000, 'highpass');
+        break;
+      case 'alarm':
+        // The drone's "!": two quick rising chirps.
+        this.sweep('square', 900, 1300, t, 0.07, 0.07);
+        this.sweep('square', 900, 1300, t + 0.1, 0.07, 0.07);
+        break;
+      case 'shutter':
+        this.noise(t, 0.03, 0.3, 4000, 'highpass');
+        this.noise(t + 0.07, 0.04, 0.22, 2500, 'bandpass');
+        break;
+      case 'deprecate':
+        // Everything powering down.
+        this.sweep('sawtooth', 900, 30, t, 1.1, 0.16);
+        this.sweep('square', 450, 25, t + 0.05, 1.0, 0.08);
+        this.noise(t, 1.1, 0.2, 4000, 'lowpass', 120);
+        for (let i = 0; i < 6; i++) {
+          this.sweep('square', 200 + Math.random() * 1500, 50, t + i * 0.12, 0.06, 0.06);
+        }
+        break;
+      case 'reclaim':
+        [523, 659, 784, 1047, 1319].forEach((hz, i) => {
+          this.sweep(rich ? 'triangle' : 'square', hz, hz, t + i * 0.06, 0.18, 0.08);
+        });
+        break;
+      case 'beam':
+        this.noise(t, 0.45, 0.32, 1800, 'bandpass', 500);
+        this.sweep('sawtooth', 160, 40, t, 0.45, 0.18);
+        break;
+      case 'restore':
+        // Everything coming back at once: a huge rising chord and a shimmer.
+        for (const [hz, v] of [
+          [110, 0.12],
+          [165, 0.1],
+          [220, 0.1],
+          [277, 0.08],
+          [330, 0.08],
+          [440, 0.06],
+        ]) {
+          this.sweep('sawtooth', hz / 2, hz * 2, t, 1.6, v);
+        }
+        for (let i = 0; i < 14; i++) {
+          const hz = 1500 + Math.random() * 3000;
+          this.sweep('sine', hz, hz, t + 1 + i * 0.07, 0.25, 0.04);
+        }
+        break;
+      case 'achievement':
+        this.sweep('sine', 988, 988, t, 0.08, 0.1);
+        this.sweep('sine', 1319, 1319, t + 0.08, 0.16, 0.1);
+        break;
       case 'bossDie':
         for (let i = 0; i < 8; i++) {
           this.noise(t + i * 0.18, 0.15, 0.22, 900 - i * 80);

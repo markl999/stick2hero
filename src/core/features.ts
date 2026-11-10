@@ -48,6 +48,16 @@ export const FEATURE_IDS = [
   'VOICE',
   'DEPTH',
   'CUTSCENE',
+  // Era 5 — MODERN
+  'HD',
+  'DYNAMIC_SHADOWS',
+  'PHYSICS',
+  'CAPE',
+  'BLOOM',
+  'ADAPTIVE_MUSIC',
+  'RUMBLE',
+  'ACHIEVEMENTS',
+  'PHOTO_MODE',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -309,6 +319,69 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 4,
     description: 'An in-engine cinematic.',
     hint: 'GRAB SOME POPCORN',
+  },
+  HD: {
+    id: 'HD',
+    label: 'HD',
+    era: 5,
+    description: 'Native resolution: crisp, anti-aliased vector graphics.',
+    hint: 'ENHANCE',
+  },
+  DYNAMIC_SHADOWS: {
+    id: 'DYNAMIC_SHADOWS',
+    label: 'DYNAMIC SHADOWS',
+    era: 5,
+    description: 'Lights cast real shadows. Drones cannot see you in the dark.',
+    hint: 'STAY IN THE DARK',
+  },
+  PHYSICS: {
+    id: 'PHYSICS',
+    label: 'PHYSICS',
+    era: 5,
+    description: 'Destructible scenery: smash cracked walls and cut down lamps.',
+    hint: 'HIT THE CRACKED WALL',
+  },
+  CAPE: {
+    id: 'CAPE',
+    label: 'CAPE',
+    era: 5,
+    description: 'The last body part. Hold jump in the air to glide; vents lift you.',
+    hint: 'HOLD JUMP TO GLIDE',
+  },
+  BLOOM: {
+    id: 'BLOOM',
+    label: 'BLOOM / POST-FX',
+    era: 5,
+    description: 'Glow, chromatic aberration, vignette and film grain. Far too much of it.',
+    hint: 'IS IT TOO MUCH? YES',
+  },
+  ADAPTIVE_MUSIC: {
+    id: 'ADAPTIVE_MUSIC',
+    label: 'ADAPTIVE MUSIC',
+    era: 5,
+    description: 'The soundtrack builds up when there is danger.',
+    hint: 'IT KNOWS WHEN YOU FIGHT',
+  },
+  RUMBLE: {
+    id: 'RUMBLE',
+    label: 'RUMBLE',
+    era: 5,
+    description: 'Gamepad haptics. Keyboard players get the next best thing.',
+    hint: 'FEEL EVERYTHING',
+  },
+  ACHIEVEMENTS: {
+    id: 'ACHIEVEMENTS',
+    label: 'ACHIEVEMENTS',
+    era: 5,
+    description: 'Achievements, including forty for things you have already done.',
+    hint: 'YOU ARE DOING GREAT',
+  },
+  PHOTO_MODE: {
+    id: 'PHOTO_MODE',
+    label: 'PHOTO MODE',
+    era: 5,
+    description: 'Freeze the game, frame a shot, pick a filter and save it as a PNG.',
+    hint: 'PRESS P',
   },
 };
 
