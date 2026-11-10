@@ -62,8 +62,8 @@ const C_MUSIC = [
 
 // prettier-ignore
 const D_WALLJUMP = [
-  '................',
-  '......#.........',
+  '.............8..',
+  '......#.....###.',
   '......#.........',
   '......#.........',
   '......#..#######',
@@ -139,5 +139,6 @@ export const ERA2_LEVEL: LevelDef = {
     '5': 'HANDS_FEET',
     '6': 'THROW',
     '7': 'CHECKPOINTS',
+    '8': 'CHEAT_CODES',
   },
 };

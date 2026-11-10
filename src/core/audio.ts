@@ -60,7 +60,8 @@ export type SfxName =
   | 'reclaim'
   | 'beam'
   | 'restore'
-  | 'achievement';
+  | 'achievement'
+  | 'scream';
 
 /** Vowel formants (Hz): F1, F2, F3. */
 const VOWELS = {
@@ -337,6 +338,11 @@ export class AudioEngine {
         this.vowel(t, 0.09, v, v, pitch, pitch * 1.05, 0.18, Math.random() < 0.4);
         break;
       }
+      case 'scream':
+        // WILHELM SCREAM (our own): a long, falling, slightly cracked "AAAAAH".
+        this.vowel(t, 0.95, 'a', 'a', 640, 260, 0.38, true);
+        this.vowel(t + 0.04, 0.8, 'a', 'o', 960, 380, 0.12, true);
+        break;
       case 'voiceBoss': {
         const vowels: Vowel[] = ['a', 'o', 'uh', 'e'];
         const v = vowels[Math.floor(Math.random() * vowels.length)];

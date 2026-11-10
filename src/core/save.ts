@@ -21,6 +21,9 @@ export interface SaveData {
   /** Seconds of play, and deaths, over the whole run (for the completion screen). */
   playTime: number;
   deaths: number;
+  /** Secrets' cosmetics: BIGHEAD (CHEAT CODES) and the chosen HAT. */
+  bigHead: boolean;
+  hat: number;
 }
 
 export function newRunId(): number {
@@ -40,6 +43,8 @@ export function defaultSave(): SaveData {
     disabled: [],
     playTime: 0,
     deaths: 0,
+    bigHead: false,
+    hat: 0,
   };
 }
 
@@ -66,6 +71,8 @@ export function loadSave(): SaveData {
       disabled: Array.isArray(data.disabled) ? data.disabled.filter(isFeatureId) : [],
       playTime: count(data.playTime),
       deaths: Math.floor(count(data.deaths)),
+      bigHead: data.bigHead === true,
+      hat: Math.floor(count(data.hat)),
     };
   } catch {
     return defaultSave();

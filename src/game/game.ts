@@ -24,7 +24,7 @@ import { Debris, Drone, Lamp, litBy, Vent } from './era5';
 import { Finale } from './finale';
 import { PhotoMode } from './photo';
 import { Pickup } from './pickup';
-import { Player, type Bounds } from './player';
+import { Player, type Bounds, type PlayerEvents } from './player';
 
 /** How long an unlock "moment" lasts, and how much of it freezes gameplay (hitstop). */
 export const MOMENT_DURATION = 2.2;
@@ -44,6 +44,10 @@ export const BOSS_INTRO_TIME = 1.8;
 export const THROW_COOLDOWN = 0.35;
 export const MAX_PEBBLES = 3;
 export const SCORE_KNIGHT = 300;
+/** TUTORIAL: at most one tip this often (seconds). */
+export const TIP_EVERY = 14;
+/** WILHELM SCREAM: how often an enemy screams on the way out. */
+export const SCREAM_CHANCE = 0.35;
 export const SCORE_GHOST = 200;
 /** CAMERA pulls in during the Chase. */
 export const CHASE_ZOOM = 1.2;
@@ -112,7 +116,8 @@ export type SoundName =
   | 'reclaim'
   | 'beam'
   | 'restore'
-  | 'achievement';
+  | 'achievement'
+  | 'scream';
 
 /** Things the game needs the outside world (scenes) to do. */
 export type GameRequest = 'eraComplete' | 'gameOver' | 'title' | 'ending';
@@ -218,6 +223,14 @@ export class Game {
   hiScore: number;
   /** Accessibility options; the app swaps in a new object when they change. */
   comfort: Comfort;
+  /**
+   * Cosmetics from the secrets, chosen in the app: BIGHEAD (a CHEAT CODE) and which HAT.
+   * They only show while CHEAT CODES / HATS are on.
+   */
+  cosmetics = { bigHead: false, hat: 0 };
+  /** TUTORIAL: time since the last tip (the first comes soon after you collect it). */
+  private tipT = TIP_EVERY - 2;
+  private walkT = 0;
   /** Collected but switched off in the Feature Menu: their pickups stay collected. */
   disabled: ReadonlySet<FeatureId> = new Set();
   /** Feet position to respawn at; moves to each collected pickup. */
@@ -361,7 +374,7 @@ export class Game {
           // Finale moments don't trigger the features' own follow-ups.
         } else if (feature === ERA0_EXIT_FEATURE && this.level.era === 0)
           this.request = 'eraComplete';
-        else if (feature === 'TITLE_SCREEN') this.request = 'title';
+        else if (feature === 'TITLE_SCREEN' || feature === 'CHEAT_CODES') this.request = 'title';
         else if (feature === 'CUTSCENE' && !this.cutsceneSeen) this.startCutscene();
         // Beating Flicker awards COLOUR (16); the era ends once that's sunk in.
         else if (feature === 'COLOUR_16' && this.flicker?.state === 'dead') {
@@ -480,6 +493,7 @@ export class Game {
     if (events.punched) this.play('punch');
     if (events.swung) this.play('swing');
     if (events.dashed) this.play('dash');
+    this.tutorial(dt, events);
 
     // THROW: forward in an arc, or straight up while holding up.
     this.throwCooldown = Math.max(0, this.throwCooldown - dt);
@@ -528,6 +542,7 @@ export class Game {
         this.fx('debris', walker.box.x + walker.box.w / 2, walker.box.y + 6, 12, 120, { up: 80 });
         this.score += SCORE_WALKER;
         this.play('enemyDie');
+        this.scream(walker.box.x + walker.box.w / 2, walker.box.y);
       } else if (canHurt && overlaps(player.box, walker.box)) {
         this.die();
       }
@@ -695,6 +710,7 @@ export class Game {
         else if (result === 'killed') {
           this.score += SCORE_KNIGHT;
           this.play('enemyDie', knight.box.x);
+          this.scream(knight.box.x + knight.box.w / 2, knight.box.y);
           this.ragdoll(knight.box.x + knight.box.w / 2, knight.box.y + knight.box.h, player.facing);
         } else if (result === 'blocked') this.play('clank', knight.box.x);
       }
@@ -853,6 +869,7 @@ export class Game {
           ghost.kill();
           this.score += SCORE_GHOST;
           this.play('enemyDie', ghost.box.x);
+          this.scream(ghost.box.x + ghost.box.w / 2, ghost.box.y);
           this.fx('glitch', ghost.box.x + 8, ghost.box.y + 9, 14, 60);
         } else if (canHurt && overlaps(p.box, ghost.box)) {
           this.die();
@@ -986,6 +1003,7 @@ export class Game {
           this.stats.drones++;
           this.score += SCORE_KNIGHT;
           this.play('enemyDie', drone.x);
+          this.scream(drone.x, drone.y - 10);
           this.fx('spark', drone.x, drone.y, 18, 150, { up: 40 });
           if (physics) this.debris.burst('metal', drone.x, drone.y, 7, { speed: 140, size: 4 });
           this.award(ACHIEVEMENT.drone);
@@ -1275,6 +1293,45 @@ export class Game {
       this.camera.shake = Math.max(this.camera.shake, amount);
     }
     this.rumble(amount / 8, 0.12 + amount * 0.03);
+  }
+
+  /**
+   * TUTORIAL (a secret): helpful tips, every so often, for whatever you've just done.
+   * Never before you've done it: that would be helpful.
+   */
+  private tutorial(dt: number, events: PlayerEvents): void {
+    if (!this.features.has('TUTORIAL')) return;
+    const p = this.player;
+    this.walkT = p.onGround && p.vx !== 0 ? this.walkT + dt : 0;
+    this.tipT += dt;
+    if (this.tipT < TIP_EVERY) return;
+    let tip: string | null = null;
+    if (events.grabbed) tip = 'JUMP AT A LEDGE TO GRAB IT!';
+    else if (events.dashed) tip = 'PRESS DASH TO DASH!';
+    else if (events.swung || events.punched) tip = 'PRESS ATTACK TO ATTACK!';
+    else if (events.swam) tip = 'PRESS JUMP TO SWIM!';
+    else if (p.gliding && p.glideTime > 0.5) tip = 'HOLD JUMP TO GLIDE!';
+    else if (events.jumped) tip = 'PRESS JUMP TO JUMP!';
+    else if (this.walkT > 2) tip = p.vx > 0 ? 'PRESS RIGHT TO GO RIGHT!' : 'PRESS LEFT TO GO LEFT!';
+    if (!tip) return;
+    this.tipT = 0;
+    const praise = ["YOU'RE DOING GREAT!", 'NICE!', "YOU'RE A NATURAL.", 'GOOD JOB!', 'WOW!'];
+    this.toasts.push({
+      text: `TIP: ${tip}`,
+      sub: praise[Math.floor(Math.random() * praise.length)],
+      t: 0,
+      life: 3,
+    });
+  }
+
+  /**
+   * WILHELM SCREAM (a secret): now and then an enemy goes out screaming. You can see it as
+   * well as hear it.
+   */
+  private scream(x: number, y: number): void {
+    if (!this.features.has('WILHELM_SCREAM') || Math.random() > SCREAM_CHANCE) return;
+    this.play('scream', x);
+    this.toasts.push({ text: 'AAAAAAAH!', t: 0, life: 1.1, x, y: y - 6 });
   }
 
   /** VOICE: grunts and speech, only once you have it. */

@@ -311,7 +311,8 @@ describe('Era 3 level', () => {
       game.activeArenaX,
       `reached the arena (stuck at ${p.feetX.toFixed(0)},${p.feetY.toFixed(0)})`,
     ).toBe(arenaX);
-    for (const f of FEATURE_IDS.filter((id) => FEATURES[id].era === 3)) {
+    // Every main-path pickup (secrets are off the path: the bot doesn't go looking).
+    for (const f of FEATURE_IDS.filter((id) => FEATURES[id].era === 3 && !FEATURES[id].secret)) {
       expect(features.has(f), f).toBe(true);
     }
     expect(deaths).toBeLessThanOrEqual(3);

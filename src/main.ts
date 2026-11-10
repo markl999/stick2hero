@@ -4,6 +4,8 @@ import { FEATURE_IDS, FeatureRegistry, type Era, type FeatureId } from './core/f
 import { Input } from './core/input';
 import { FixedLoop } from './core/loop';
 import { clearSave, defaultSave, loadSave, writeSave } from './core/save';
+import { buy } from './core/shop';
+import { HAT_NAMES } from './render/hats';
 import { loadScores, writeScores, type ScoreEntry } from './core/scores';
 import { loadSettings, volumeGain, writeSettings, type Settings } from './core/settings';
 import { DebugOverlay } from './debug/overlay';
@@ -82,6 +84,8 @@ async function boot(): Promise<void> {
       disabled: [...disabled],
       playTime: save.playTime,
       deaths: totalDeaths(),
+      bigHead: save.bigHead,
+      hat: save.hat,
     });
   };
 
@@ -130,8 +134,23 @@ async function boot(): Promise<void> {
       comfort: settings.comfort,
     });
     game.disabled = disabled;
+    game.cosmetics = { bigHead: save.bigHead, hat: save.hat };
     gameScene = new GameScene(game, onRequest);
   };
+
+  /** The title screen; with CHEAT CODES, it takes codes (BIGHEAD toggles big-head mode). */
+  const titleScene = () =>
+    new TitleScene(
+      () => setScene(gameScene),
+      features.has('CHEAT_CODES')
+        ? () => {
+            save.bigHead = !save.bigHead;
+            game.cosmetics.bigHead = save.bigHead;
+            persist();
+            return `BIG HEAD MODE: ${save.bigHead ? 'ON' : 'OFF'}`;
+          }
+        : undefined,
+    );
 
   /** HIGH SCORES: after a Game Over or the ending, the table (and your initials) first. */
   const thenScores = (next: () => void) => {
@@ -151,6 +170,26 @@ async function boot(): Promise<void> {
     );
   };
 
+  /** Switching collected features on and off: the Feature Menu and EXTRAS both use it. */
+  const switchboard = {
+    owned: () => new Set(FEATURE_IDS.filter((id) => features.has(id) || disabled.has(id))),
+    isOn: (id: FeatureId) => features.has(id),
+    set: (id: FeatureId, on: boolean) => {
+      if (on) {
+        disabled.delete(id);
+        features.unlock(id);
+      } else {
+        disabled.add(id);
+        features.lock(id);
+      }
+    },
+  };
+  const setHat = (hat: number) => {
+    save.hat = hat;
+    game.cosmetics.hat = hat;
+    persist();
+  };
+
   const pause = () => {
     const resumeTo = scene;
     setScene(
@@ -168,22 +207,23 @@ async function boot(): Promise<void> {
         highScores: () => (features.has('HIGH_SCORES') ? scores : null),
         run: save.run,
         // The Feature Menu: after the Deprecator, switch anything you've collected.
-        featureMenu: save.cleared
-          ? {
-              owned: () =>
-                new Set(FEATURE_IDS.filter((id) => features.has(id) || disabled.has(id))),
-              isOn: (id) => features.has(id),
-              set: (id, on) => {
-                if (on) {
-                  disabled.delete(id);
-                  features.unlock(id);
-                } else {
-                  disabled.add(id);
-                  features.lock(id);
-                }
-              },
-            }
-          : null,
+        featureMenu: save.cleared ? switchboard : null,
+        extras: {
+          menu: switchboard,
+          hat: () => save.hat,
+          setHat,
+          buy: (id) => {
+            const result = buy(id, {
+              lives: features.has('LIVES') ? game.lives : null,
+              hat: features.has('HATS') ? save.hat : null,
+              hatCount: HAT_NAMES.length,
+              random: Math.random,
+            });
+            if (result.lives !== undefined) game.lives = result.lives;
+            if (result.hat !== undefined) setHat(result.hat);
+            return result.message;
+          },
+        },
         onResume: () => setScene(resumeTo),
         onNewGame: () => {
           // A fresh save (a new run for the high-score table), then start from the tape.
@@ -199,7 +239,7 @@ async function boot(): Promise<void> {
     if (request === 'pause') {
       pause();
     } else if (request === 'title') {
-      setScene(new TitleScene(() => setScene(gameScene)));
+      setScene(titleScene());
     } else if (request === 'gameOver') {
       // In the finale, a Game Over puts everything back and starts the fight again.
       const retry = game.retryCheckpoint;
@@ -250,7 +290,7 @@ async function boot(): Promise<void> {
                     // Back on the roof, the Deprecator gone, everything yours.
                     startEra(era, game.checkpoint, game.score);
                     persist();
-                    setScene(new TitleScene(() => setScene(gameScene)));
+                    setScene(titleScene());
                   }),
               }),
             ),
@@ -343,8 +383,7 @@ async function boot(): Promise<void> {
   };
 
   /** After the tape: the title screen, once the game has one. */
-  const afterTape = () =>
-    setScene(features.has('TITLE_SCREEN') ? new TitleScene(() => setScene(gameScene)) : gameScene);
+  const afterTape = () => setScene(features.has('TITLE_SCREEN') ? titleScene() : gameScene);
   const tapeScene = () =>
     new TapeLoaderScene({
       audio,

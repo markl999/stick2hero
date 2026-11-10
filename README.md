@@ -32,7 +32,10 @@ Each ability only works once you've collected it.
 - **MUSIC and SOUND FX** volume.
 - **NEW GAME:** start again from the tape. Your high scores, volume and keys are kept.
 
-There's a high-score table too, but you have to find it first.
+There are eight **secrets** hidden off the main path, one or two per era, each a climb to an
+out-of-the-way ledge: a high-score table, cheat codes, a tutorial, a CRT filter, a scream, hats,
+lens flares and a shop. Once you've found one, the pause menu has **EXTRAS** to switch them on and
+off.
 
 **After the ending**, a completion screen shows what you collected, your time and deaths, and the
 pause menu gains **FEATURES**: switch any feature you've collected on or off (a whole era at once

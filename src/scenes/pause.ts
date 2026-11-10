@@ -13,6 +13,8 @@ import { COMFORT_KEYS, type Comfort } from '../core/comfort';
 import { featureRows, toggleRow, type FeatureRow } from '../core/featureMenu';
 import { ERA_NAMES, FEATURES, type FeatureId } from '../core/features';
 import type { ScoreEntry } from '../core/scores';
+import { SHOP_ITEMS, type ShopItemId } from '../core/shop';
+import { HAT_NAMES } from '../render/hats';
 import { VOLUME_STEPS, type Settings } from '../core/settings';
 import type { ResolutionRequest } from '../render/display';
 import { textWidth } from '../render/font3x5';
@@ -44,6 +46,8 @@ export interface PauseOptions {
   run: number;
   /** The post-game Feature Menu, or null before the Deprecator's beaten. */
   featureMenu: FeatureMenuOptions | null;
+  /** EXTRAS: the secrets you've found, switchable, plus the hat and the shop. */
+  extras: ExtrasOptions;
   onResume: () => void;
   /** Wipe the save and start again from the tape. */
   onNewGame: () => void;
@@ -56,8 +60,19 @@ export interface FeatureMenuOptions {
   set: (id: FeatureId, on: boolean) => void;
 }
 
-type Item = 'resume' | 'features' | 'controls' | 'access' | 'music' | 'sfx' | 'scores' | 'newGame';
-type Page_ = 'main' | 'features' | 'controls' | 'access' | 'scores' | 'newGame';
+export interface ExtrasOptions {
+  /** Switching secrets on and off works like the Feature Menu. */
+  menu: FeatureMenuOptions;
+  hat: () => number;
+  setHat: (hat: number) => void;
+  /** MICROTRANSACTIONS: buy something; returns what the shop says. */
+  buy: (id: ShopItemId) => string;
+}
+
+type Item = 'resume' | 'features' | 'extras' | 'controls' | 'access' | 'music' | 'sfx' | 'newGame';
+type Page_ = 'main' | 'features' | 'extras' | 'shop' | 'controls' | 'access' | 'scores' | 'newGame';
+/** EXTRAS rows: a secret to switch, or one of the pages it leads to. */
+type ExtraRow = FeatureId | 'scores' | 'shop' | 'back';
 
 /** Rows of the Feature Menu on screen at once. */
 const FEATURE_ROWS_SHOWN = 13;
@@ -65,11 +80,11 @@ const FEATURE_ROWS_SHOWN = 13;
 const ITEM_LABELS: Record<Item, string> = {
   resume: 'RESUME',
   features: 'FEATURES',
+  extras: 'EXTRAS',
   controls: 'CONTROLS',
   access: 'ACCESSIBILITY',
   music: 'MUSIC',
   sfx: 'SOUND FX',
-  scores: 'HIGH SCORES',
   newGame: 'NEW GAME',
 };
 
@@ -107,6 +122,8 @@ export class PauseScene implements Scene {
   private controlsCursor = 0;
   private accessCursor = 0;
   private featureCursor = 0;
+  private extrasCursor = 0;
+  private shopCursor = 0;
   /** First Feature Menu row on screen. */
   private featureScroll = 0;
   /** New game: 0 = NO, 1 = YES. */
@@ -132,9 +149,8 @@ export class PauseScene implements Scene {
   private items(): Item[] {
     const items: Item[] = ['resume'];
     if (this.opts.featureMenu) items.push('features');
-    items.push('controls', 'access', 'music', 'sfx');
-    if (this.opts.highScores()) items.push('scores');
-    items.push('newGame');
+    if (this.secrets().length > 0) items.push('extras');
+    items.push('controls', 'access', 'music', 'sfx', 'newGame');
     return items;
   }
 
@@ -148,8 +164,10 @@ export class PauseScene implements Scene {
     else if (this.page === 'controls') this.updateControls(input);
     else if (this.page === 'access') this.updateAccess(input);
     else if (this.page === 'features') this.updateFeatures(input);
+    else if (this.page === 'extras') this.updateExtras(input);
+    else if (this.page === 'shop') this.updateShop(input);
     else if (this.page === 'scores') {
-      if (menuBack(input) || menuConfirm(input)) this.page = 'main';
+      if (menuBack(input) || menuConfirm(input)) this.page = 'extras';
     } else this.updateNewGame(input);
   }
 
@@ -179,11 +197,78 @@ export class PauseScene implements Scene {
     } else if (item === 'access') {
       this.page = 'access';
       this.accessCursor = 0;
-    } else if (item === 'scores') this.page = 'scores';
-    else if (item === 'newGame') {
+    } else if (item === 'extras') {
+      this.page = 'extras';
+      this.extrasCursor = 0;
+    } else if (item === 'newGame') {
       this.page = 'newGame';
       this.confirmCursor = 0;
     }
+  }
+
+  /** The secrets you've found (on or off). */
+  private secrets(): FeatureId[] {
+    const owned = this.opts.extras.menu.owned();
+    return [...owned].filter((id) => FEATURES[id].secret);
+  }
+
+  private extraRows(): ExtraRow[] {
+    const { isOn } = this.opts.extras.menu;
+    const rows: ExtraRow[] = this.secrets();
+    if (isOn('HIGH_SCORES') && this.opts.highScores()) rows.push('scores');
+    if (isOn('MICROTRANSACTIONS')) rows.push('shop');
+    rows.push('back');
+    return rows;
+  }
+
+  /** EXTRAS: switch secrets on and off, pick a hat, and the pages secrets open. */
+  private updateExtras(input: Input): void {
+    const { menu, hat, setHat } = this.opts.extras;
+    const rows = this.extraRows();
+    if (menuBack(input)) {
+      this.page = 'main';
+      return;
+    }
+    const n = rows.length;
+    if (menuPressed(input, 'up')) this.extrasCursor = (this.extrasCursor + n - 1) % n;
+    if (menuPressed(input, 'down')) this.extrasCursor = (this.extrasCursor + 1) % n;
+    this.extrasCursor = Math.min(this.extrasCursor, n - 1);
+    const row = rows[this.extrasCursor];
+    const left = menuPressed(input, 'left');
+    const right = menuPressed(input, 'right');
+    if (row === 'HATS' && (left || right)) {
+      // Left/right picks a hat (and puts it on).
+      setHat((hat() + (right ? 1 : HAT_NAMES.length - 1)) % HAT_NAMES.length);
+      if (!menu.isOn('HATS')) menu.set('HATS', true);
+      return;
+    }
+    const pressed = menuConfirm(input) || left || right;
+    if (!pressed) return;
+    if (row === 'back') this.page = 'main';
+    else if (row === 'scores') this.page = 'scores';
+    else if (row === 'shop') {
+      this.page = 'shop';
+      this.shopCursor = 0;
+      this.message = null;
+    } else menu.set(row, !menu.isOn(row));
+  }
+
+  /** MICROTRANSACTIONS: everything costs 0 coins. */
+  private updateShop(input: Input): void {
+    if (menuBack(input)) {
+      this.page = 'extras';
+      return;
+    }
+    const n = SHOP_ITEMS.length + 1;
+    if (menuPressed(input, 'up')) this.shopCursor = (this.shopCursor + n - 1) % n;
+    if (menuPressed(input, 'down')) this.shopCursor = (this.shopCursor + 1) % n;
+    if (!menuConfirm(input)) return;
+    const item = SHOP_ITEMS[this.shopCursor];
+    if (!item) {
+      this.page = 'extras';
+      return;
+    }
+    this.message = { text: this.opts.extras.buy(item.id), t: 0 };
   }
 
   private featureRows(): FeatureRow[] {
@@ -332,6 +417,8 @@ export class PauseScene implements Scene {
     else if (this.page === 'controls') this.drawControls(page);
     else if (this.page === 'access') this.drawAccess(page);
     else if (this.page === 'features') this.drawFeatures(page);
+    else if (this.page === 'extras') this.drawExtras(page);
+    else if (this.page === 'shop') this.drawShop(page);
     else if (this.page === 'scores') {
       drawScoreTable(page, this.opts.highScores() ?? [], this.opts.run, this.t);
       page.color(DIM).center('ESC: BACK', 166);
@@ -356,6 +443,59 @@ export class PauseScene implements Scene {
       }
     });
     page.color(DIM).center('ARROWS: CHOOSE   ENTER: SELECT   ESC: RESUME', 166);
+  }
+
+  private drawExtras(page: Page): void {
+    const { menu, hat } = this.opts.extras;
+    page.color(INK).center('EXTRAS', 6, 2);
+    const rows = this.extraRows();
+    rows.forEach((row, i) => {
+      const y = 26 + i * 11;
+      const selected = i === this.extrasCursor;
+      if (row === 'back' || row === 'scores' || row === 'shop') {
+        const label = row === 'back' ? 'BACK' : row === 'scores' ? 'VIEW HIGH SCORES' : 'OPEN SHOP';
+        page.item(label, 64, y + 2, 192, 1, selected);
+        return;
+      }
+      const on = menu.isOn(row);
+      const label = row === 'HATS' && on ? `HATS: < ${HAT_NAMES[hat()]} >` : FEATURES[row].label;
+      page.item(label, 64, y, 192, 1, selected);
+      page.color(selected ? BLACK : on ? INK : DIM).right(on ? 'ON' : 'OFF', 256, y);
+    });
+    const row = rows[this.extrasCursor];
+    const about =
+      row === 'HATS'
+        ? 'LEFT / RIGHT: CHANGE HAT'
+        : row === 'scores'
+          ? 'THE TABLE, AND WHERE YOU ARE ON IT'
+          : row === 'shop'
+            ? 'EVERYTHING MUST GO (FOR 0 COINS)'
+            : row === 'back'
+              ? ''
+              : FEATURES[row].description.toUpperCase();
+    page.color(INK).center(about, 150);
+    page.color(DIM).center('ENTER: SWITCH   ESC: BACK', 164);
+  }
+
+  private drawShop(page: Page): void {
+    page.color('#ffd23d').center('SHOP', 6, 2);
+    page.color(DIM).right('COINS: 0', 300, 8);
+    SHOP_ITEMS.forEach((item, i) => {
+      const y = 28 + i * 18;
+      const selected = i === this.shopCursor;
+      page.item(item.name, 48, y, 224, 1, selected);
+      page.color(selected ? BLACK : '#ffd23d').right('0 COINS', 272, y);
+      page.color(DIM).text(item.blurb, 56, y + 8);
+    });
+    const backY = 28 + SHOP_ITEMS.length * 18 + 2;
+    page.item('BACK', 48, backY, 224, 1, this.shopCursor === SHOP_ITEMS.length);
+    if (this.message) {
+      page.color(INK).center(this.message.text, 140);
+      page.color(DIM).center('CHARGED: 0 COINS. THANK YOU FOR YOUR PURCHASE!', 150);
+    } else {
+      page.color(DIM).center('CONTENTS MAY VARY. NO REFUNDS.', 150);
+    }
+    page.color(DIM).center('ENTER: BUY   ESC: BACK', 164);
   }
 
   private drawFeatures(page: Page): void {

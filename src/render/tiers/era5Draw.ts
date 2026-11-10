@@ -16,6 +16,7 @@ import type { Pickup } from '../../game/pickup';
 import { LAND_SQUASH_TIME, RUN_SPEED, SWING_TIME, type Player } from '../../game/player';
 import type { Flag, Npc } from '../../game/props';
 import { visibilityPolygon } from '../../world/light';
+import { hatRects } from '../hats';
 import { stickPose, type StickPose } from '../stickman';
 import { expressionFor } from './era3Draw';
 import { font, hash, lerp, NEON_CYAN, NEON_GOLD, NEON_PINK, type HdFrame } from './hdCommon';
@@ -451,6 +452,7 @@ export function drawPlayerHd(f: HdFrame): void {
     facing: player.facing,
     punching: player.punchT > 0 && !player.swinging,
     dead,
+    bigHead: game.cosmetics.bigHead && fs.has('CHEAT_CODES'),
     animated: fs.has('ANIMATION')
       ? {
           walkDistance: player.walkDistance,
@@ -516,6 +518,13 @@ function drawFigure(
   ctx.arc(hx, hy, pose.head.r, 0, Math.PI * 2);
   ctx.fill();
   if (full && fs.has('FACE')) drawFaceHd(f, hx, hy, pose.head.r, player.facing);
+  if (full && fs.has('HATS')) {
+    const k = pose.head.r / 4.5;
+    for (const r of hatRects(game.cosmetics.hat, player.facing, k, game.time)) {
+      ctx.fillStyle = r.colour;
+      ctx.fillRect(hx + r.x, hy - pose.head.r + r.y, r.w, r.h);
+    }
+  }
   if (full && fs.has('SWORD') && fs.has('ARMS') && player.state === 'normal') {
     drawSwordHd(f, px, py, player);
   }

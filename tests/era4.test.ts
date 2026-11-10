@@ -293,7 +293,8 @@ describe('Era 4 level', () => {
     expect(game.request, `finished (stuck at ${p.feetX.toFixed(0)},${p.feetY.toFixed(0)})`).toBe(
       'eraComplete',
     );
-    for (const f of ERA4) expect(features.has(f), f).toBe(true);
+    for (const f of ERA4.filter((id) => !FEATURES[id].secret))
+      expect(features.has(f), f).toBe(true);
     expect(game.lights.filter((l) => l.kind === 'brazier' && l.lit).length).toBeGreaterThan(0);
     expect(deaths).toBeLessThanOrEqual(3);
   });

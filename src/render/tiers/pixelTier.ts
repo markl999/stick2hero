@@ -22,6 +22,7 @@ import { WARDEN_MAX_HP } from '../../game/warden';
 import { SPIKE_HEIGHT, Tile } from '../../world/tilemap';
 import { GLYPH_H, textWidth } from '../font3x5';
 import type { PixelCanvas } from '../pixelCanvas';
+import { hatRects } from '../hats';
 import { stickPose } from '../stickman';
 import {
   drawCutsceneOverlay,
@@ -381,6 +382,7 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   drawCutsceneOverlay(f);
   if (game.finale) drawSpeechPixel(f, game.finale);
   drawHud(f);
+  drawToastsPixel(f);
   if (moment?.feature === 'SAVE_GAME') drawSaveIcon(f, moment.t);
   drawMoment(f);
   if (game.dialogue) drawDialogue(f, game.dialogue);
@@ -570,7 +572,10 @@ function drawPickups(f: Frame): void {
     const halfW = Math.ceil((textWidth(label) * fs) / 2);
     const labelX = Math.min(Math.max(cx, halfW + fs), p.width - halfW - fs);
     p.color(style.text);
-    p.textCentered(label, labelX, cy - half - (GLYPH_H + 3) * fs, fs);
+    // Above the pickup, unless that's off the top of the screen: then below it.
+    const above = cy - half - (GLYPH_H + 3) * fs;
+    const labelY = above >= fs ? above : cy + half + 3 * fs;
+    p.textCentered(label, labelX, labelY, fs);
   }
 }
 
@@ -784,6 +789,7 @@ function drawPlayer(f: Frame): void {
     facing: player.facing,
     punching: player.punchT > 0,
     dead: deathT !== null,
+    bigHead: game.cosmetics.bigHead && game.features.has('CHEAT_CODES'),
     animated: game.features.has('ANIMATION')
       ? {
           walkDistance: player.walkDistance,
@@ -826,6 +832,8 @@ function drawPlayer(f: Frame): void {
   if (game.features.has('FACE') && style.filled && !dead) {
     drawFace(f, hx, hy, pose.head.r * s, player.facing, expressionFor(game));
   }
+  if (game.features.has('HATS') && !dead)
+    drawHatPixel(f, px + pose.head.x, py + pose.head.y, pose.head.r);
   if (game.features.has('SWORD') && !dead && player.state === 'normal') {
     drawSword(f, px, py, player);
   }
@@ -838,6 +846,56 @@ function drawPlayer(f: Frame): void {
     p.color(style.player);
     const shoe = Math.max(2, Math.round(1.5 * s));
     for (const [x, y] of pose.feet) p.rect(X(px + x) - 1, Y(py + y) - shoe + 1, size + 1, shoe);
+  }
+}
+
+/**
+ * Toasts in the pixel eras: words that float up out of the world (the WILHELM SCREAM's
+ * "AAAAH!", RUMBLE on a keyboard) and boxed messages under the HUD (TUTORIAL tips).
+ */
+function drawToastsPixel(f: Frame): void {
+  const { p, game, style, fs, X, Y } = f;
+  let boxY = Math.round(p.height * 0.16);
+  // The pixel font has no asterisks (*RUMBLE*): drop them.
+  const plain = (s: string) => s.replace(/\*/g, '');
+  for (const raw of game.toasts) {
+    const toast = { ...raw, text: plain(raw.text), sub: raw.sub && plain(raw.sub) };
+    const k = toast.t / toast.life;
+    if (toast.x !== undefined && toast.y !== undefined) {
+      if (k > 0.75 && Math.floor(toast.t * 12) % 2) continue; // flicker out
+      p.color(style.hazard === style.tiles ? style.text : style.pickup);
+      p.textCentered(toast.text, X(toast.x), Y(toast.y) - Math.round(k * 10 * fs), fs);
+      continue;
+    }
+    const lines = toast.sub ? [toast.text, toast.sub] : [toast.text];
+    const w = Math.max(...lines.map(textWidth)) * fs + 8 * fs;
+    const h = lines.length * (GLYPH_H + 3) * fs + 4 * fs;
+    const x = Math.round(p.width / 2 - w / 2);
+    p.color(style.paper);
+    p.rect(x, boxY, w, h);
+    p.color(style.text);
+    p.strokeRect(x, boxY, w, h);
+    lines.forEach((l, i) =>
+      p.textCentered(l, p.width / 2, boxY + 3 * fs + i * (GLYPH_H + 3) * fs, fs),
+    );
+    boxY += h + 2 * fs;
+  }
+}
+
+/** HATS: the chosen hat on top of the head, in real colours once there are some. */
+function drawHatPixel(f: Frame, headX: number, headY: number, r: number): void {
+  const { p, game, style, s, X, Y } = f;
+  const colourful = style.rich || style.grass !== null;
+  const top = headY - r;
+  const k = r / 4.5;
+  for (const rect of hatRects(game.cosmetics.hat, game.player.facing, k, game.time)) {
+    p.color(colourful ? rect.colour : style.player);
+    p.rect(
+      X(headX + rect.x),
+      Y(top + rect.y),
+      Math.max(1, Math.round(rect.w * s)),
+      Math.max(1, Math.round(rect.h * s)),
+    );
   }
 }
 

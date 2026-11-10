@@ -20,6 +20,8 @@ export interface PoseOptions {
   punching?: boolean;
   /** Lying flat (the death animation). */
   dead?: boolean;
+  /** CHEAT CODES: BIGHEAD. */
+  bigHead?: boolean;
   /**
    * ANIMATION. Without it every state is one fixed pose (he slides around). With it:
    * a walk cycle, jump and fall poses, a landing squash and a wall-slide pose.
@@ -42,8 +44,15 @@ const SHOULDER = -17;
 const HIP = -9;
 const HEAD_Y = -23.5;
 
+/** BIGHEAD makes the head this much bigger (it grows upwards from the neck). */
+export const BIG_HEAD = 2.2;
+
 export function stickPose(options: PoseOptions): StickPose {
   const pose = basePose(options);
+  if (options.bigHead) {
+    const r = pose.head.r * BIG_HEAD;
+    pose.head = { ...pose.head, y: pose.head.y - (r - pose.head.r), r };
+  }
   return options.dead ? lieDown(pose, options.facing) : pose;
 }
 

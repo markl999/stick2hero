@@ -103,10 +103,65 @@ export function drawHdTier(p: PixelCanvas, game: Game, alpha: number): void {
   }
 
   f.screen();
+  if (game.features.has('LENS_FLARE')) drawLensFlares(f);
   drawRain(f);
   if (photo?.filter && photo.filter !== 'NONE') applyPhotoFilter(f, photo.filter);
   drawHdUi(f);
   drawEnhance(f);
+  ctx.restore();
+}
+
+/**
+ * LENS FLARE (a secret): every light on screen throws a chain of coloured ghosts across the
+ * picture, through its middle, plus a long blue streak. Far too many, on purpose.
+ */
+function drawLensFlares(f: HdFrame): void {
+  const { ctx, game, W, H } = f;
+  const sources: { x: number; y: number; k: number }[] = [
+    // The moon (where drawSky puts it).
+    { x: W * 0.8 - f.camX * 0.02 * f.s, y: H * 0.2, k: 0.7 },
+  ];
+  for (const lamp of game.lamps) {
+    if (!lamp.lit) continue;
+    const x = f.sx(lamp.x);
+    const y = f.sy(lamp.y);
+    if (x > -W * 0.1 && x < W * 1.1 && y > -H * 0.1 && y < H * 1.1) sources.push({ x, y, k: 1 });
+  }
+  const cx = W / 2;
+  const cy = H / 2;
+  const ghosts = [
+    { t: 0.35, r: 0.05, c: '120,255,240' },
+    { t: 0.7, r: 0.025, c: '255,90,220' },
+    { t: 1.15, r: 0.08, c: '255,210,90' },
+    { t: 1.5, r: 0.04, c: '120,160,255' },
+    { t: 1.9, r: 0.12, c: '255,120,160' },
+  ];
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const src of sources) {
+    const dx = cx - src.x;
+    const dy = cy - src.y;
+    for (const g of ghosts) {
+      const x = src.x + dx * g.t;
+      const y = src.y + dy * g.t;
+      const r = H * g.r;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(${g.c},${(0.3 * src.k).toFixed(3)})`);
+      grad.addColorStop(0.7, `rgba(${g.c},${(0.18 * src.k).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${g.c},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // The anamorphic streak.
+    const streak = ctx.createLinearGradient(src.x - W * 0.45, 0, src.x + W * 0.45, 0);
+    streak.addColorStop(0, 'rgba(90,160,255,0)');
+    streak.addColorStop(0.5, `rgba(150,200,255,${(0.45 * src.k).toFixed(3)})`);
+    streak.addColorStop(1, 'rgba(90,160,255,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(src.x - W * 0.45, src.y - H * 0.004, W * 0.9, H * 0.008);
+  }
   ctx.restore();
 }
 

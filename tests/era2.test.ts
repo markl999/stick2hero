@@ -216,7 +216,16 @@ describe('Era 2 level', () => {
   it('has its seven pickups on solid ground, flags, a switch and Flicker', () => {
     const level = parseLevel(ERA2_LEVEL);
     expect(level.pickups.map((p) => p.feature).sort()).toEqual(
-      ['COLOUR_4', 'SCROLLING', 'ANIMATION', 'MUSIC', 'HANDS_FEET', 'THROW', 'CHECKPOINTS'].sort(),
+      [
+        'COLOUR_4',
+        'SCROLLING',
+        'ANIMATION',
+        'MUSIC',
+        'HANDS_FEET',
+        'THROW',
+        'CHECKPOINTS',
+        'CHEAT_CODES',
+      ].sort(),
     );
     for (const p of level.pickups) {
       const below = level.map.isSolid(Math.floor(p.x / TILE), Math.floor(p.y / TILE) + 1);

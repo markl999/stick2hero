@@ -379,7 +379,9 @@ describe('the finale', () => {
     }
     expect(game.request, `ended (stuck in ${fin.state}, phase ${fin.phase})`).toBe('ending');
     expect(seen).toContain('last');
-    expect(lowest).toBeLessThanOrEqual(FINALE_KEEP.length + 1);
+    // Down to the basics (and the secrets, which the Deprecator leaves alone).
+    const secrets = FEATURE_IDS.filter((id) => FEATURES[id].secret).length;
+    expect(lowest).toBeLessThanOrEqual(FINALE_KEEP.length + secrets + 1);
     // Everything came back at once.
     for (const id of FEATURE_IDS) expect(features.has(id), id).toBe(true);
     expect(sounds).toContain('restore');
@@ -529,7 +531,8 @@ describe('Era 5 level', () => {
       fin.state,
       `reached the arena (stuck at ${p.feetX.toFixed(0)},${p.feetY.toFixed(0)}) lamps ${game.lamps.map((l) => l.kind + ':' + l.state + '@' + l.x.toFixed(0) + ',' + l.y.toFixed(0)).join(' ')} deaths ${deaths} waited ${waited} watched ${[0, 24, 48].map((d) => watched(p.feetX + d))}`,
     ).not.toBe('waiting');
-    for (const f of ERA5) expect(features.has(f), f).toBe(true);
+    for (const f of ERA5.filter((id) => !FEATURES[id].secret))
+      expect(features.has(f), f).toBe(true);
     expect(game.stats.smashed).toBeGreaterThan(0);
     expect(waited).toBeGreaterThan(0);
     expect(deaths).toBeLessThanOrEqual(3);

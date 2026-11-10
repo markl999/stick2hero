@@ -44,25 +44,34 @@ export class GameScene implements Scene {
     return this.hd;
   }
 
-  /** BLOOM / POST-FX: overdone, and more so while it's being unveiled. */
+  /**
+   * BLOOM / POST-FX: overdone, and more so while it's being unveiled. And CRT SCANLINES (a
+   * secret) in any era.
+   */
   postFx(): PostFx | null {
     const { features, moment, time } = this.game;
-    if (!this.hd || !features.has('BLOOM')) return null;
-    // Photo mode's 1978 filter is crisp black and white: no glow.
+    // Photo mode's 1978 filter is crisp black and white: nothing on top.
     if (this.game.photo?.filter === '1978') return null;
+    const bloom = this.hd && features.has('BLOOM');
+    const crt = features.has('CRT_SCANLINES');
+    if (!bloom && !crt) return null;
+    const res = this.resolution();
+    const rows = res === 'native' ? 270 : res.height;
     let k = 1;
     const calm = this.game.comfort.reduceFlashing;
-    if (!calm && moment?.feature === 'BLOOM' && (moment.kind ?? 'added') === 'added') {
+    if (bloom && !calm && moment?.feature === 'BLOOM' && (moment.kind ?? 'added') === 'added') {
       // It ramps up past "too much", then settles at merely too much.
       const t = moment.t;
       k = t < 0.8 ? t / 0.8 : 1 + Math.max(0, 1 - (t - 0.8) / 1.2) * 0.8;
     }
     return {
-      bloom: 1.35 * k,
-      aberration: 4 * k,
-      vignette: 0.5 * Math.min(1, k),
-      grain: 0.05,
+      bloom: bloom ? 1.35 * k : 0,
+      aberration: bloom ? 4 * k : crt ? 1.5 : 0,
+      vignette: bloom ? 0.5 * Math.min(1, k) : 0,
+      grain: bloom ? 0.05 : 0.03,
       time,
+      crt: crt ? 1 : 0,
+      rows,
     };
   }
 

@@ -31,6 +31,7 @@ export const FEATURE_IDS = [
   'THROW',
   'CHECKPOINTS',
   'COLOUR_16',
+  'CHEAT_CODES',
   // Era 3 — 16-BIT
   'PARALLAX',
   'SAMPLES_STEREO',
@@ -40,6 +41,8 @@ export const FEATURE_IDS = [
   'SWORD',
   'DASH',
   'SAVE_GAME',
+  'TUTORIAL',
+  'CRT_SCANLINES',
   // Era 4 — 32-BIT
   'TRANSPARENCY',
   'PARTICLES',
@@ -49,6 +52,8 @@ export const FEATURE_IDS = [
   'VOICE',
   'DEPTH',
   'CUTSCENE',
+  'WILHELM_SCREAM',
+  'HATS',
   // Era 5 — MODERN
   'HD',
   'DYNAMIC_SHADOWS',
@@ -59,6 +64,8 @@ export const FEATURE_IDS = [
   'RUMBLE',
   'ACHIEVEMENTS',
   'PHOTO_MODE',
+  'LENS_FLARE',
+  'MICROTRANSACTIONS',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -393,6 +400,62 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 5,
     description: 'Freeze the game, frame a shot, pick a filter and save it as a PNG.',
     hint: 'PRESS P',
+  }, // --- Secrets (PRD section 7): optional extras, hidden off the main path ---
+  CHEAT_CODES: {
+    id: 'CHEAT_CODES',
+    label: 'CHEAT CODES',
+    era: 2,
+    description: 'Type a code on the title screen. Try BIGHEAD.',
+    hint: 'TYPE BIGHEAD ON THE TITLE SCREEN',
+    secret: true,
+  },
+  TUTORIAL: {
+    id: 'TUTORIAL',
+    label: 'TUTORIAL',
+    era: 3,
+    description: 'Helpful tips for things you can already do.',
+    hint: 'PRESS JUMP TO JUMP!',
+    secret: true,
+  },
+  CRT_SCANLINES: {
+    id: 'CRT_SCANLINES',
+    label: 'CRT SCANLINES',
+    era: 3,
+    description: 'An old telly: scanlines, a curved screen, dark corners.',
+    hint: 'SWITCH IT OFF IN PAUSE: EXTRAS',
+    secret: true,
+  },
+  WILHELM_SCREAM: {
+    id: 'WILHELM_SCREAM',
+    label: 'WILHELM SCREAM',
+    era: 4,
+    description: 'Enemies sometimes scream as they go. A famous-sounding scream.',
+    hint: 'AAAAAAAAAH!',
+    secret: true,
+  },
+  HATS: {
+    id: 'HATS',
+    label: 'HATS',
+    era: 4,
+    description: 'Hats. Several of them. Pick one in pause: extras.',
+    hint: 'PICK ONE IN PAUSE: EXTRAS',
+    secret: true,
+  },
+  LENS_FLARE: {
+    id: 'LENS_FLARE',
+    label: 'LENS FLARE',
+    era: 5,
+    description: 'Every light flares. Cinematic.',
+    hint: 'SO CINEMATIC',
+    secret: true,
+  },
+  MICROTRANSACTIONS: {
+    id: 'MICROTRANSACTIONS',
+    label: 'MICROTRANSACTIONS',
+    era: 5,
+    description: 'A shop opens. Everything costs 0.',
+    hint: 'THE SHOP IS OPEN (PAUSE MENU)',
+    secret: true,
   },
 };
 

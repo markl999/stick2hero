@@ -1,3 +1,4 @@
+import { typeCheat, type Cheat } from '../core/cheats';
 import type { Input } from '../core/input';
 import { RESOLUTIONS, type Resolution } from '../render/display';
 import { GLYPH_H } from '../render/font3x5';
@@ -15,8 +16,18 @@ const PAPER = '#020a04';
 export class TitleScene implements Scene {
   readonly name = 'title';
   private t = 0;
+  /** CHEAT CODES: what's been typed, and what the last code did. */
+  private typed = '';
+  private message: { text: string; t: number } | null = null;
 
-  constructor(private readonly onDone: () => void) {}
+  /**
+   * `cheat`: with CHEAT CODES, called when a code is typed; returns what to say about it.
+   * Typing then doesn't start the game; anything else (Enter, a button) does.
+   */
+  constructor(
+    private readonly onDone: () => void,
+    private readonly cheat?: (code: Cheat) => string,
+  ) {}
 
   resolution(): Resolution {
     return RESOLUTIONS.ERA1;
@@ -28,6 +39,14 @@ export class TitleScene implements Scene {
 
   update(dt: number, input: Input): void {
     this.t += dt;
+    if (this.message) this.message.t += dt;
+    const letters = input.typed();
+    if (this.cheat && letters.length > 0) {
+      const result = typeCheat(this.typed, letters);
+      this.typed = result.buffer;
+      if (result.cheat) this.message = { text: this.cheat(result.cheat), t: 0 };
+      return;
+    }
     if (this.t > 0.6 && input.wasAnyPressed()) this.onDone();
   }
 
@@ -52,7 +71,18 @@ export class TitleScene implements Scene {
     p.disc(fx + pose.head.x, fy + pose.head.y, pose.head.r);
     p.hline(cx - 40, cx + 40, fy + 1);
 
-    if (Math.floor(this.t * 2) % 2 === 0) p.textCentered('PRESS ANY KEY', cx, 152, 2);
+    if (this.cheat) {
+      // CHEAT CODES: the code so far, and what the last one did.
+      if (this.message && this.message.t < 2.5) {
+        p.textCentered(this.message.text, cx, 152, 2);
+      } else if (this.typed) {
+        p.textCentered(`CODE: ${this.typed}${Math.floor(this.t * 3) % 2 ? '-' : ' '}`, cx, 152, 2);
+      } else if (Math.floor(this.t * 2) % 2 === 0) {
+        p.textCentered('TYPE A CODE, OR PRESS ENTER', cx, 152, 2);
+      }
+    } else if (Math.floor(this.t * 2) % 2 === 0) {
+      p.textCentered('PRESS ANY KEY', cx, 152, 2);
+    }
     p.textCentered('1981', cx, p.height - (GLYPH_H + 3), 1);
   }
 }
