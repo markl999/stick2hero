@@ -274,7 +274,8 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   let style = baseStyle(game, level);
   if (game.flashing) style = inverted(style);
 
-  // CAMERA: zoom around the middle of the screen, and shake.
+  // CAMERA: zoom in around the bottom middle of the screen (so the floor, and the pits in
+  // it, stay in view: zooming around the centre pushed the floor off the bottom), and shake.
   const zoom = cam.zoom;
   const shakeX = cam.shake ? (Math.random() - 0.5) * 2 * cam.shake * s : 0;
   const shakeY = cam.shake ? (Math.random() - 0.5) * 2 * cam.shake * s : 0;
@@ -289,7 +290,7 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
     camX,
     camY,
     X: (wx) => Math.round((wx - camX - VIEW_W / 2) * zs + p.width / 2 + shakeX),
-    Y: (wy) => Math.round((wy - camY - VIEW_H / 2) * zs + p.height / 2 + shakeY) + hop,
+    Y: (wy) => Math.round((wy - camY - VIEW_H) * zs + p.height + shakeY) + hop,
   });
   const f = frame(style);
 
