@@ -14,6 +14,13 @@ export const FEATURE_IDS = [
   'ARMS',
   'SCORE',
   'FRAME_RATE',
+  // Era 1 — ARCADE
+  'ENEMIES',
+  'DEATH',
+  'LIVES',
+  'PUNCH',
+  'SFX',
+  'TITLE_SCREEN',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -66,6 +73,58 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     description: '15fps becomes smooth 60fps.',
     hint: 'SMOOOOOOTH',
   },
+  ENEMIES: {
+    id: 'ENEMIES',
+    label: 'ENEMIES',
+    era: 1,
+    description: 'Enemies appear. Harmless until DEATH exists.',
+    hint: 'WHY WOULD YOU DO THAT',
+  },
+  DEATH: {
+    id: 'DEATH',
+    label: 'DEATH',
+    era: 1,
+    description: 'Enemies and spikes can now kill you.',
+    hint: 'OH NO',
+  },
+  LIVES: {
+    id: 'LIVES',
+    label: 'LIVES',
+    era: 1,
+    description: 'Three lives and a Game Over screen.',
+    hint: 'YOU HAVE 3. PHEW',
+  },
+  PUNCH: {
+    id: 'PUNCH',
+    label: 'PUNCH',
+    era: 1,
+    description: 'Your arms become a weapon.',
+    hint: 'PRESS X OR J',
+  },
+  SFX: {
+    id: 'SFX',
+    label: 'SFX',
+    era: 1,
+    description: 'Sounds for everything, not just jumping.',
+    hint: 'BLIP BLOOP',
+  },
+  TITLE_SCREEN: {
+    id: 'TITLE_SCREEN',
+    label: 'TITLE SCREEN',
+    era: 1,
+    description: 'The game gets a title screen.',
+    hint: 'EVERY GAME NEEDS ONE',
+  },
+};
+
+/** Era display names, for transitions and the title screen. */
+export const ERA_NAMES: Record<Era, string> = {
+  0: 'BOOT',
+  1: 'ARCADE',
+  2: '8-BIT',
+  3: '16-BIT',
+  4: '32-BIT',
+  5: 'MODERN',
 };
 
 export function isFeatureId(value: unknown): value is FeatureId {

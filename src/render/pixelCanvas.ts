@@ -139,6 +139,17 @@ export class PixelCanvas {
     }
   }
 
+  /** Filled circle. */
+  disc(cx: number, cy: number, r: number): void {
+    const x0 = Math.round(cx);
+    const y0 = Math.round(cy);
+    const radius = Math.max(1, Math.round(r));
+    for (let dy = -radius; dy <= radius; dy++) {
+      const half = Math.floor(Math.sqrt(radius * radius - dy * dy + radius * 0.8));
+      this.ctx.fillRect(x0 - half, y0 + dy, half * 2 + 1, 1);
+    }
+  }
+
   /** Draw text with the 3×5 font. `scale` is screen pixels per font pixel. */
   text(text: string, x: number, y: number, scale = 1): void {
     const s = Math.max(1, Math.round(scale));

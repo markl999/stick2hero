@@ -16,6 +16,18 @@ export interface TapeHandle {
   stop(): void;
 }
 
+export type SfxName =
+  | 'jump'
+  | 'land'
+  | 'punch'
+  | 'enemyDie'
+  | 'die'
+  | 'pickup'
+  | 'bossHit'
+  | 'clank'
+  | 'bossLand'
+  | 'bossDie';
+
 const PILOT_HZ = 807;
 const BIT0_HZ = 2000;
 const BIT1_HZ = 1000;
@@ -23,6 +35,7 @@ const BIT1_HZ = 1000;
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
 
   unlock(): void {
     if (!this.ctx) {
@@ -57,6 +70,90 @@ export class AudioEngine {
     osc.connect(gain).connect(this.master);
     osc.start(t);
     osc.stop(t + duration + 0.01);
+  }
+
+  /** Era 1 SFX: simple one-voice arcade sounds, all synthesized. */
+  sfx(name: SfxName): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    switch (name) {
+      case 'jump':
+        this.sweep('square', 300, 720, t, 0.12, 0.12);
+        break;
+      case 'land':
+        this.sweep('square', 140, 90, t, 0.04, 0.08);
+        break;
+      case 'punch':
+        this.noise(t, 0.06, 0.18, 3000);
+        break;
+      case 'enemyDie':
+        this.sweep('square', 700, 90, t, 0.18, 0.14);
+        break;
+      case 'die':
+        this.sweep('square', 880, 55, t, 0.7, 0.16);
+        break;
+      case 'pickup':
+        this.sweep('square', 660, 660, t, 0.07, 0.12);
+        this.sweep('square', 990, 990, t + 0.08, 0.1, 0.12);
+        break;
+      case 'bossHit':
+        this.sweep('square', 220, 70, t, 0.2, 0.16);
+        this.noise(t, 0.12, 0.2, 1500);
+        break;
+      case 'clank':
+        this.sweep('square', 1400, 1100, t, 0.05, 0.1);
+        this.sweep('square', 1100, 1100, t + 0.06, 0.04, 0.06);
+        break;
+      case 'bossLand':
+        this.noise(t, 0.3, 0.3, 400);
+        break;
+      case 'bossDie':
+        for (let i = 0; i < 8; i++) {
+          this.noise(t + i * 0.18, 0.15, 0.22, 900 - i * 80);
+          this.sweep('square', 500 - i * 50, 60, t + i * 0.18, 0.16, 0.08);
+        }
+        break;
+    }
+  }
+
+  private sweep(
+    type: OscillatorType,
+    from: number,
+    to: number,
+    start: number,
+    duration: number,
+    volume: number,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
+    gain.gain.setValueAtTime(volume, start);
+    gain.gain.linearRampToValueAtTime(0, start + duration);
+    osc.connect(gain).connect(this.master);
+    osc.start(start);
+    osc.stop(start + duration + 0.01);
+  }
+
+  private noise(start: number, duration: number, volume: number, cutoff: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    this.noiseBuffer ??= makeNoiseBuffer(ctx);
+    const source = ctx.createBufferSource();
+    source.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = cutoff;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(volume, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+    source.connect(filter).connect(gain).connect(this.master);
+    source.start(start);
+    source.stop(start + duration + 0.01);
   }
 
   /**
@@ -126,5 +223,12 @@ function makeDataBuffer(ctx: AudioContext, seconds: number): AudioBuffer {
     for (let k = 0; k < half && i < length; k++) data[i++] = 0.5;
     for (let k = 0; k < half && i < length; k++) data[i++] = -0.5;
   }
+  return buffer;
+}
+
+function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
+  const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   return buffer;
 }

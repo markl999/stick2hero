@@ -9,8 +9,9 @@ const NONE: PlayerControls = {
   down: false,
   jumpPressed: false,
   jumpHeld: false,
+  attackPressed: false,
 };
-const ALL: PlayerAbilities = { moveLeft: true, jump: true, grab: true };
+const ALL: PlayerAbilities = { moveLeft: true, jump: true, grab: true, punch: true };
 const NO_GRAB: PlayerAbilities = { ...ALL, grab: false };
 
 // Floor top at row 9. A 1-tile step from column 6 (top row 8), a 3-tile wall from

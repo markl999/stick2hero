@@ -9,10 +9,12 @@ export interface SaveData {
   introSeen: boolean;
   /** Feet position to resume from, or null for the level spawn. */
   checkpoint: { x: number; y: number } | null;
+  /** Index of the current era's level. */
+  era: number;
 }
 
 export function defaultSave(): SaveData {
-  return { version: 1, features: [], score: 0, introSeen: false, checkpoint: null };
+  return { version: 1, features: [], score: 0, introSeen: false, checkpoint: null, era: 0 };
 }
 
 function storage(): Storage | null {
@@ -37,6 +39,7 @@ export function loadSave(): SaveData {
       score: typeof data.score === 'number' && Number.isFinite(data.score) ? data.score : 0,
       introSeen: data.introSeen === true,
       checkpoint: isPoint(data.checkpoint) ? data.checkpoint : null,
+      era: Number.isInteger(data.era) && (data.era as number) >= 0 ? (data.era as number) : 0,
     };
   } catch {
     return defaultSave();

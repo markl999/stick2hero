@@ -97,6 +97,7 @@ const F_SUMMIT = [
 
 export const ERA0_LEVEL: LevelDef = {
   name: 'era0-boot',
+  era: 0,
   rows: composeScreens([
     [A_START, B_ARMS, C_DROP, F_SUMMIT],
     [SOLID_SCREEN, SOLID_SCREEN, D_SCORE, E_CLIMB],

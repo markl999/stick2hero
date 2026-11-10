@@ -29,12 +29,18 @@ export const HANG_OFFSET = 2;
 export const CLIMB_TIME = 0.22;
 export const REGRAB_COOLDOWN = 0.3;
 
+/** PUNCH: a short jab in front of you. */
+export const PUNCH_TIME = 0.15;
+export const PUNCH_COOLDOWN = 0.3;
+export const PUNCH_REACH = 14;
+
 export interface PlayerControls {
   left: boolean;
   right: boolean;
   down: boolean;
   jumpPressed: boolean;
   jumpHeld: boolean;
+  attackPressed: boolean;
 }
 
 /** What the current feature set allows. Inputs are never gated, abilities are. */
@@ -42,6 +48,7 @@ export interface PlayerAbilities {
   moveLeft: boolean;
   jump: boolean;
   grab: boolean;
+  punch: boolean;
 }
 
 export interface Bounds {
@@ -53,6 +60,7 @@ export interface PlayerEvents {
   jumped: boolean;
   landed: boolean;
   grabbed: boolean;
+  punched: boolean;
 }
 
 export type PlayerState = 'normal' | 'hang' | 'climb';
@@ -66,6 +74,10 @@ export class Player {
   state: PlayerState = 'normal';
   /** 0..1 progress through a climb. */
   climbT = 0;
+  /** Seconds left on the current punch (0 = not punching). */
+  punchT = 0;
+  /** Increments with every punch, so a target is only hit once per punch. */
+  punchId = 0;
   /** Position at the start of the last step, for render interpolation. */
   prevX: number;
   prevY: number;
@@ -73,6 +85,7 @@ export class Player {
   private coyote = 0;
   private buffer = 0;
   private regrab = 0;
+  private punchCooldown = 0;
   private climbFrom = { x: 0, y: 0 };
   private climbTo = { x: 0, y: 0 };
 
@@ -101,6 +114,15 @@ export class Player {
     this.state = 'normal';
     this.coyote = 0;
     this.buffer = 0;
+    this.punchT = 0;
+  }
+
+  /** The punch's hit box while a punch is active, otherwise null. */
+  punchBox(): Box | null {
+    if (this.punchT <= 0) return null;
+    const b = this.box;
+    const x = this.facing > 0 ? b.x + b.w : b.x - PUNCH_REACH;
+    return { x, y: b.y + 8, w: PUNCH_REACH, h: 10 };
   }
 
   update(
@@ -113,7 +135,9 @@ export class Player {
     this.prevX = this.box.x;
     this.prevY = this.box.y;
     this.regrab = Math.max(0, this.regrab - dt);
-    const events: PlayerEvents = { jumped: false, landed: false, grabbed: false };
+    this.punchT = Math.max(0, this.punchT - dt);
+    this.punchCooldown = Math.max(0, this.punchCooldown - dt);
+    const events: PlayerEvents = { jumped: false, landed: false, grabbed: false, punched: false };
 
     if (this.state === 'climb') {
       this.updateClimb(dt, events);
@@ -128,6 +152,13 @@ export class Player {
     const dir = (controls.right ? 1 : 0) - (controls.left && abilities.moveLeft ? 1 : 0);
     this.vx = dir * RUN_SPEED;
     if (dir !== 0) this.facing = dir > 0 ? 1 : -1;
+
+    if (controls.attackPressed && abilities.punch && this.punchCooldown <= 0) {
+      this.punchT = PUNCH_TIME;
+      this.punchCooldown = PUNCH_COOLDOWN;
+      this.punchId++;
+      events.punched = true;
+    }
 
     // Jump with buffering (press slightly early) and coyote time (press slightly late).
     this.buffer =

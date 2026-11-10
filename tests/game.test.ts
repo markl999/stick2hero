@@ -109,17 +109,18 @@ describe('Game', () => {
   });
 
   it('beeps on jump only once BEEP is unlocked', () => {
-    const beep = vi.fn();
-    const { game, features } = newGame(['JUMP'], { beep });
+    const sound = vi.fn();
+    const { game, features } = newGame(['JUMP'], { sound });
     const bot = new Bot(game);
     bot.step(10);
     bot.input.pressed.add('jump');
     bot.step(60);
-    expect(beep).not.toHaveBeenCalled();
+    expect(sound).not.toHaveBeenCalled();
     features.unlock('BEEP');
     bot.input.pressed.add('jump');
     bot.step(1);
-    expect(beep).toHaveBeenCalledTimes(1);
+    expect(sound).toHaveBeenCalledTimes(1);
+    expect(sound).toHaveBeenCalledWith('beep');
   });
 
   it('resumes from a saved checkpoint', () => {
@@ -184,6 +185,6 @@ describe('Era 0 is completable', () => {
     bot.walkTo('left', 'collect FRAME RATE', () => bot.has('FRAME_RATE'));
 
     bot.hold();
-    bot.until('era complete', () => game.eraComplete, 300);
+    bot.until('era complete', () => game.request === 'eraComplete', 300);
   });
 });

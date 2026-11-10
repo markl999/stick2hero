@@ -1,8 +1,8 @@
 import type { Input } from '../core/input';
-import type { Game } from '../game/game';
+import type { Game, GameRequest } from '../game/game';
 import { RESOLUTIONS, type Resolution } from '../render/display';
 import type { PixelCanvas } from '../render/pixelCanvas';
-import { drawEra0 } from '../render/tiers/era0';
+import { drawPixelTier } from '../render/tiers/pixelTier';
 import type { Scene } from './scene';
 
 /** Era 0 renders at 15fps until FRAME RATE... and keeps it choppy for a beat after. */
@@ -14,11 +14,11 @@ export class GameScene implements Scene {
 
   constructor(
     readonly game: Game,
-    private readonly onEraComplete: () => void,
+    private readonly onRequest: (request: GameRequest) => void,
   ) {}
 
   resolution(): Resolution {
-    return RESOLUTIONS.ERA0;
+    return this.game.level.era === 0 ? RESOLUTIONS.ERA0 : RESOLUTIONS.ERA1;
   }
 
   renderCap(): number | null {
@@ -32,13 +32,14 @@ export class GameScene implements Scene {
 
   update(dt: number, input: Input): void {
     this.game.update(dt, input);
-    if (this.game.eraComplete) {
-      this.game.eraComplete = false;
-      this.onEraComplete();
+    const request = this.game.request;
+    if (request) {
+      this.game.request = null;
+      this.onRequest(request);
     }
   }
 
   render(p: PixelCanvas, alpha: number): void {
-    drawEra0(p, this.game, alpha);
+    drawPixelTier(p, this.game, alpha);
   }
 }

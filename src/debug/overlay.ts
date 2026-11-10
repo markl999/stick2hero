@@ -5,11 +5,14 @@ import { RESOLUTIONS, type Display, type Resolution } from '../render/display';
 
 export interface DebugDeps {
   features: FeatureRegistry;
-  game: Game;
+  /** The current era's game (it's replaced when the era changes). */
+  game(): Game;
   loop: FixedLoop;
   display: Display;
-  /** Set a resolution override, or null to go back to the era's own resolution. */
   sceneName(): string;
+  eraCount: number;
+  loadEra(index: number): void;
+  /** Set a resolution override, or null to go back to the era's own resolution. */
   setResolutionOverride(res: Resolution | null): void;
   playIntro(): void;
   resetSave(): void;
@@ -63,18 +66,19 @@ export class DebugOverlay {
     const now = performance.now();
     if (now - this.lastStats < 200) return;
     this.lastStats = now;
-    const { loop, game, display } = this.deps;
+    const { loop, display } = this.deps;
+    const game = this.deps.game();
     const p = game.player;
     const res = display.currentResolution;
     this.stats.textContent = [
-      `scene  ${this.deps.sceneName()}`,
+      `scene  ${this.deps.sceneName()}  era ${game.level.era}`,
       `render ${loop.renderFps.toFixed(0)} fps (cap ${loop.renderCap ?? 'none'})`,
       `sim    ${loop.stepsPerSecond.toFixed(0)} Hz`,
       `res    ${res.width}×${res.height}`,
       `pos    ${p.feetX.toFixed(1)}, ${p.feetY.toFixed(1)}`,
       `vel    ${p.vx.toFixed(0)}, ${p.vy.toFixed(0)}  ${p.state === 'normal' ? (p.onGround ? 'ground' : 'air') : p.state}`,
       `cam    ${game.camera.mode} @ ${game.camera.x}, ${game.camera.y}`,
-      `score  ${game.score}`,
+      `score  ${game.score}  lives ${game.lives}`,
     ].join('\n');
   }
 
@@ -148,6 +152,9 @@ export class DebugOverlay {
     row.append(
       button('all on', () => FEATURE_IDS.forEach((id) => features.unlock(id))),
       button('all off', () => FEATURE_IDS.forEach((id) => features.lock(id))),
+      ...Array.from({ length: this.deps.eraCount }, (_, i) =>
+        button(`era ${i}`, () => this.deps.loadEra(i)),
+      ),
       button('tape intro', () => this.deps.playIntro()),
       button('reset save', () => this.deps.resetSave()),
     );
