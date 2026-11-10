@@ -297,10 +297,12 @@ describe('the comedy features', () => {
 });
 
 describe('the Deprecator', () => {
-  it('its phases take everything but the basics, each feature once', () => {
+  it('its phases take everything but the basics and the secrets, each feature once', () => {
     const taken = FINALE_PHASES.flatMap((p) => p.take);
     expect(new Set(taken).size).toBe(taken.length);
-    expect([...taken, ...FINALE_KEEP].sort()).toEqual([...FEATURE_IDS].sort());
+    const secrets = FEATURE_IDS.filter((id) => FEATURES[id].secret);
+    expect(secrets.length).toBeGreaterThan(0);
+    expect([...taken, ...FINALE_KEEP, ...secrets].sort()).toEqual([...FEATURE_IDS].sort());
     for (const phase of FINALE_PHASES) expect(phase.take).toContain(phase.reclaim);
     expect(FINALE_PHASES.at(-1)!.reclaim).toBe('ARMS');
   });
@@ -400,7 +402,8 @@ describe('the finale', () => {
     expect(features.has('ARMS')).toBe(false);
     expect(features.has('FRAME_RATE')).toBe(false);
     expect(features.has('DEATH')).toBe(false);
-    expect(features.list().sort()).toEqual([...FINALE_KEEP].sort());
+    const secrets = FEATURE_IDS.filter((id) => FEATURES[id].secret);
+    expect(features.list().sort()).toEqual([...FINALE_KEEP, ...secrets].sort());
   });
 
   it('a Game Over during the fight puts everything back and retries at the arena', () => {

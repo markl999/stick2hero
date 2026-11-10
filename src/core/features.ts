@@ -21,6 +21,7 @@ export const FEATURE_IDS = [
   'PUNCH',
   'SFX',
   'TITLE_SCREEN',
+  'HIGH_SCORES',
   // Era 2 — 8-BIT
   'COLOUR_4',
   'SCROLLING',
@@ -70,6 +71,8 @@ export interface FeatureDef {
   description: string;
   /** Second line of the unlock banner: a nudge on how to use it, or a joke. */
   hint: string;
+  /** An optional extra hidden off the main path (PRD section 7). The finale leaves these be. */
+  secret?: boolean;
 }
 
 export const FEATURES: Record<FeatureId, FeatureDef> = {
@@ -151,6 +154,14 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 1,
     description: 'The game gets a title screen.',
     hint: 'EVERY GAME NEEDS ONE',
+  },
+  HIGH_SCORES: {
+    id: 'HIGH_SCORES',
+    label: 'HIGH SCORES',
+    era: 1,
+    description: 'A high-score table with three-letter initials.',
+    hint: 'SECRET! YOUR NAME IN LIGHTS',
+    secret: true,
   },
   COLOUR_4: {
     id: 'COLOUR_4',

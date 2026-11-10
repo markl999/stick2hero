@@ -796,6 +796,14 @@ function drawHud(f: Frame): void {
     const text = `LIVES ${Math.max(0, game.lives)}`;
     label(text, p.width - (textWidth(text) + 2) * fs, 2 * fs);
   }
+  // HIGH SCORES: the arcade "HI" at the top in the middle (bosses' health pips go there).
+  const fighting = game.enemiesActive ? (game.boss ?? game.flicker ?? game.warden) : null;
+  const bossUp = fighting !== null && fighting.state !== 'waiting' && fighting.state !== 'dead';
+  if (game.features.has('HIGH_SCORES') && !bossUp && !game.finale?.active) {
+    const hi = Math.floor(Math.max(game.hiScore, game.displayScore));
+    const text = `HI ${hi.toString().padStart(6, '0')}`;
+    label(text, Math.round(p.width / 2 - (textWidth(text) * fs) / 2), 2 * fs);
+  }
   p.color(style.text);
 
   // SCREEN 2: point at the exit.

@@ -143,17 +143,12 @@ describe('The Block (boss)', () => {
 });
 
 describe('Era 1 level', () => {
-  it('has its six features on solid ground and one boss', () => {
+  it('has its six features and the HIGH SCORES secret on solid ground, and one boss', () => {
     const level = parseLevel(ERA1_LEVEL);
     expect(level.era).toBe(1);
-    expect(level.pickups.map((p) => p.feature)).toEqual([
-      'ENEMIES',
-      'DEATH',
-      'LIVES',
-      'PUNCH',
-      'SFX',
-      'TITLE_SCREEN',
-    ]);
+    expect(level.pickups.map((p) => p.feature).sort()).toEqual(
+      ['ENEMIES', 'DEATH', 'LIVES', 'PUNCH', 'SFX', 'TITLE_SCREEN', 'HIGH_SCORES'].sort(),
+    );
     for (const p of level.pickups) {
       const below = level.map.isSolid(Math.floor(p.x / TILE), Math.floor(p.y / TILE) + 1);
       expect(below, `${p.feature} has ground below`).toBe(true);

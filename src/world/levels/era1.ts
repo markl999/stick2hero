@@ -11,7 +11,8 @@ import { composeScreens } from './compose';
  *
  * - A: ENEMIES. A walker appears, and it's harmless.
  * - B: DEATH. Now the walker and a 2-tile spike pit are deadly.
- * - C: LIVES, then two walkers to jump.
+ * - C: LIVES, then two walkers to jump. The secret HIGH SCORES sits on the ledge above
+ *   (3 tiles up, so it takes ARMS: optional, and off the path).
  * - D: PUNCH, then a 2-tile-high corridor where walkers can't be jumped (they're 14
  *   tall, and the corridor leaves only 12 units of jump), so you have to punch.
  * - E: SFX, then TITLE SCREEN (boots you to the title screen and back). Last checkpoint.
@@ -50,7 +51,7 @@ const C_LIVES = [
   '................',
   '................',
   '................',
-  '................',
+  '.......7........',
   '.....####.......',
   '................',
   '#..3....e....e..',
@@ -107,5 +108,6 @@ export const ERA1_LEVEL: LevelDef = {
     '4': 'PUNCH',
     '5': 'SFX',
     '6': 'TITLE_SCREEN',
+    '7': 'HIGH_SCORES',
   },
 };

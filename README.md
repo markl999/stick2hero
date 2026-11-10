@@ -21,10 +21,21 @@ Shift / L to dash · ↑ to talk · jump to swim upwards in water · hold jump i
 (once you have a cape) · P for photo mode · gamepad supported.
 Each ability only works once you've collected it.
 
+**Esc / Start pauses**, from the very first screen. The pause menu has:
+
+- **CONTROLS:** see every binding and rebind the keyboard. Select an action, then press a new key to
+  add it, or one of its keys to remove it (for example W from JUMP, if you don't want up to jump).
+  Esc, Enter and the arrow keys always work in menus, so a bad binding can't lock you out.
+- **MUSIC and SOUND FX** volume.
+- **NEW GAME:** start again from the tape. Your high scores, volume and keys are kept.
+
+There's a high-score table too, but you have to find it first.
+
 ## Status
 
 M5 is done: the whole game plays from the tape loader to the ending. BOOT, ARCADE (The Block),
 8-BIT (Flicker), 16-BIT (The Warden), 32-BIT (the cutscene and the Chase) and MODERN: HD, real
 shadows and stealth, physics, the cape, far too much bloom, then the Deprecator, who rolls the
-game back to a white screen while you win it back. Next: M6, secrets, the Feature Menu,
-accessibility and polish.
+game back to a white screen while you win it back. M6 has started: the pause menu (rebindable
+keys, volume, new game) and the first secret, HIGH SCORES, are in. Still to come: the other
+secrets, the Feature Menu, the rest of the accessibility options and polish.

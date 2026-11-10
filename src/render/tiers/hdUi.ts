@@ -70,6 +70,10 @@ function drawHud(f: HdFrame): void {
   if (game.features.has('SCORE')) {
     text(f, 'SCORE', u * 2.5, u * 3.2, u * 1.8, 'rgba(255,255,255,0.6)', 'left', 600);
     text(f, Math.floor(game.displayScore).toLocaleString('en-GB'), u * 2.5, u * 6.2, u * 3.4);
+    if (game.features.has('HIGH_SCORES') && !game.finale?.active) {
+      const hi = Math.floor(Math.max(game.hiScore, game.displayScore)).toLocaleString('en-GB');
+      text(f, `HI ${hi}`, u * 2.5, u * 9.4, u * 1.8, 'rgba(255,255,255,0.6)', 'left', 600);
+    }
   }
   if (game.features.has('LIVES')) {
     for (let i = 0; i < 3; i++) {

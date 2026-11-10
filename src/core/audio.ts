@@ -88,7 +88,13 @@ const BIT1_HZ = 1000;
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
+  /** Everything ends up here. */
+  private output: GainNode | null = null;
+  /** The sound-effects bus (beeps, SFX, voice, the tape). Its volume is the SFX slider. */
   private master: GainNode | null = null;
+  /** The soundtrack's bus. Its volume is the music slider. */
+  private musicBus: GainNode | null = null;
+  private volumes = { music: 1, sfx: 1 };
   private noiseBuffer: AudioBuffer | null = null;
   private chip: ChipMusic | null = null;
   private cd: CdMusic | null = null;
@@ -101,9 +107,15 @@ export class AudioEngine {
     if (!this.ctx) {
       try {
         this.ctx = new AudioContext();
+        this.output = this.ctx.createGain();
+        this.output.gain.value = 0.5;
+        this.output.connect(this.ctx.destination);
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.5;
-        this.master.connect(this.ctx.destination);
+        this.master.gain.value = this.volumes.sfx;
+        this.master.connect(this.output);
+        this.musicBus = this.ctx.createGain();
+        this.musicBus.gain.value = this.volumes.music;
+        this.musicBus.connect(this.output);
       } catch {
         return; // No Web Audio: the game stays silent.
       }
@@ -121,9 +133,18 @@ export class AudioEngine {
     this.syncMusic();
   }
 
+  /** The pause menu's sliders, as gains (0..1). */
+  setVolumes(music: number, sfx: number): void {
+    this.volumes = { music, sfx };
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.musicBus?.gain.setTargetAtTime(music, ctx.currentTime, 0.03);
+    this.master?.gain.setTargetAtTime(sfx, ctx.currentTime, 0.03);
+  }
+
   private syncMusic(): void {
     const ctx = this.ctx;
-    const master = this.master;
+    const master = this.musicBus;
     if (!ctx || !master || ctx.state !== 'running') return;
     const noise = () => (this.noiseBuffer ??= makeNoiseBuffer(ctx));
     if (this.track === 'chip') {

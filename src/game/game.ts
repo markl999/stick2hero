@@ -149,6 +149,8 @@ export interface GameOptions {
   checkpoint?: Point | null;
   /** The Deprecator has already been beaten. */
   finaleDone?: boolean;
+  /** HIGH SCORES: the top of the table, for the HUD. */
+  hiScore?: number;
 }
 
 /**
@@ -209,6 +211,8 @@ export class Game {
   score: number;
   /** The HUD's rolling counter, catching up to `score`. */
   displayScore: number;
+  /** HIGH SCORES: the best score in the table (the HUD shows whichever is higher). */
+  hiScore: number;
   /** Feet position to respawn at; moves to each collected pickup. */
   checkpoint: Point;
   lives = START_LIVES;
@@ -314,6 +318,7 @@ export class Game {
     });
     this.score = options.score ?? 0;
     this.displayScore = this.score;
+    this.hiScore = options.hiScore ?? 0;
     this.furthestColumn = Math.floor(this.checkpoint.x / TILE);
     this.syncWithFeatures();
     this.camera.snap(this.player.feetX, this.playerCenterY);

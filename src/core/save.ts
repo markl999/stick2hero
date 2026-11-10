@@ -1,4 +1,5 @@
 import { isFeatureId, type FeatureId } from './features';
+import { storage } from './storage';
 
 const KEY = 'stick2hero.save.v1';
 
@@ -13,6 +14,12 @@ export interface SaveData {
   era: number;
   /** The Deprecator has been beaten. */
   cleared: boolean;
+  /** This playthrough's id: its row in the high-score table. NEW GAME starts a new one. */
+  run: number;
+}
+
+export function newRunId(): number {
+  return Date.now();
 }
 
 export function defaultSave(): SaveData {
@@ -24,15 +31,8 @@ export function defaultSave(): SaveData {
     checkpoint: null,
     era: 0,
     cleared: false,
+    run: newRunId(),
   };
-}
-
-function storage(): Storage | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage;
-  } catch {
-    return null; // Access can throw in some privacy modes.
-  }
 }
 
 export function loadSave(): SaveData {
@@ -51,6 +51,10 @@ export function loadSave(): SaveData {
       checkpoint: isPoint(data.checkpoint) ? data.checkpoint : null,
       era: Number.isInteger(data.era) && (data.era as number) >= 0 ? (data.era as number) : 0,
       cleared: data.cleared === true,
+      run:
+        typeof data.run === 'number' && Number.isFinite(data.run) && data.run > 0
+          ? data.run
+          : newRunId(),
     };
   } catch {
     return defaultSave();

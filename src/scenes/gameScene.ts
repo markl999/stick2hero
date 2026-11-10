@@ -11,12 +11,15 @@ import type { Scene } from './scene';
 const ERA0_RENDER_CAP = 15;
 const FRAME_RATE_LIFT_AT = 0.9;
 
+/** What gameplay asks the app for: the game's own requests, or the pause menu. */
+export type SceneRequest = GameRequest | 'pause';
+
 export class GameScene implements Scene {
   readonly name = 'game';
 
   constructor(
     readonly game: Game,
-    private readonly onRequest: (request: GameRequest) => void,
+    private readonly onRequest: (request: SceneRequest) => void,
   ) {}
 
   /** HD (Era 5 only) draws vector graphics at native resolution. */
@@ -71,6 +74,11 @@ export class GameScene implements Scene {
   }
 
   update(dt: number, input: Input): void {
+    // Esc / Start pauses (in PHOTO MODE it closes photo mode instead, in the game).
+    if (input.wasPressed('pause') && !this.game.photo) {
+      this.onRequest('pause');
+      return;
+    }
     this.game.update(dt, input);
     const request = this.game.request;
     if (request) {

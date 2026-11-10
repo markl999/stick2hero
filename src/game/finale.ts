@@ -1,5 +1,5 @@
 import { VIEW_W } from '../config';
-import { FEATURE_IDS, type FeatureId, type FeatureRegistry } from '../core/features';
+import { FEATURE_IDS, FEATURES, type FeatureId, type FeatureRegistry } from '../core/features';
 import { overlaps, type Box } from '../world/physics';
 
 /*
@@ -83,7 +83,10 @@ export const FINALE_PHASES: readonly FinalePhase[] = [
   {
     reclaim: 'ARMS',
     take: FEATURE_IDS.filter(
-      (id) => !FINALE_KEEP.includes(id) && !EARLY_PHASES.some((p) => p.take.includes(id)),
+      (id) =>
+        !FINALE_KEEP.includes(id) &&
+        !FEATURES[id].secret &&
+        !EARLY_PHASES.some((p) => p.take.includes(id)),
     ),
     line: 'BACK TO THE PROTOTYPE.',
     attacks: [],

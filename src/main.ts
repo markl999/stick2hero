@@ -3,14 +3,18 @@ import { AudioEngine, type MusicTrack } from './core/audio';
 import { FEATURE_IDS, FeatureRegistry, type Era } from './core/features';
 import { Input } from './core/input';
 import { FixedLoop } from './core/loop';
-import { clearSave, loadSave, writeSave } from './core/save';
+import { clearSave, defaultSave, loadSave, writeSave } from './core/save';
+import { loadScores, writeScores, type ScoreEntry } from './core/scores';
+import { loadSettings, volumeGain, writeSettings, type Settings } from './core/settings';
 import { DebugOverlay } from './debug/overlay';
-import { Game, type GameRequest, type Point } from './game/game';
+import { Game, type Point } from './game/game';
 import { Display, type Resolution } from './render/display';
 import { GameOverScene, TitleScene } from './scenes/cards';
 import { EndingScene } from './scenes/ending';
 import { EraEndScene } from './scenes/eraEnd';
-import { GameScene } from './scenes/gameScene';
+import { GameScene, type SceneRequest } from './scenes/gameScene';
+import { HighScoreScene } from './scenes/highScores';
+import { PauseScene } from './scenes/pause';
 import type { Scene } from './scenes/scene';
 import { TapeLoaderScene } from './scenes/tapeLoader';
 import { ERA_LEVELS } from './world/levels';
@@ -23,6 +27,15 @@ async function boot(): Promise<void> {
   const audio = new AudioEngine();
   const input = new Input();
   input.attach(window, () => audio.unlock());
+
+  // Options (volume, keys) and the high-score table live apart from the save.
+  let settings: Settings = loadSettings();
+  const applySettings = () => {
+    input.setBindings(settings.keys);
+    audio.setVolumes(volumeGain(settings.music), volumeGain(settings.sfx));
+  };
+  applySettings();
+  let scores: ScoreEntry[] = loadScores();
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
   const parent = document.getElementById('app');
@@ -49,6 +62,7 @@ async function boot(): Promise<void> {
       checkpoint: game.checkpoint,
       era,
       cleared: save.cleared,
+      run: save.run,
     });
   };
 
@@ -92,22 +106,70 @@ async function boot(): Promise<void> {
       score,
       checkpoint,
       finaleDone: save.cleared,
+      hiScore: scores[0]?.score ?? 0,
     });
     gameScene = new GameScene(game, onRequest);
   };
 
-  const onRequest = (request: GameRequest) => {
-    if (request === 'title') {
+  /** HIGH SCORES: after a Game Over or the ending, the table (and your initials) first. */
+  const thenScores = (next: () => void) => {
+    if (!features.has('HIGH_SCORES')) return next();
+    setScene(
+      new HighScoreScene({
+        table: scores,
+        run: save.run,
+        score: game.score,
+        onSave: (table) => {
+          scores = table;
+          writeScores(table);
+          game.hiScore = table[0]?.score ?? 0;
+        },
+        onDone: next,
+      }),
+    );
+  };
+
+  const pause = () => {
+    const resumeTo = scene;
+    setScene(
+      new PauseScene({
+        under: resumeTo,
+        input,
+        settings: () => settings,
+        setSettings: (next) => {
+          settings = next;
+          writeSettings(next);
+          applySettings();
+        },
+        previewSfx: () => audio.beep(),
+        highScores: () => (features.has('HIGH_SCORES') ? scores : null),
+        run: save.run,
+        onResume: () => setScene(resumeTo),
+        onNewGame: () => {
+          // A fresh save (a new run for the high-score table), then start from the tape.
+          writeSave({ ...defaultSave(), introSeen: true });
+          location.reload();
+        },
+      }),
+    );
+  };
+
+  const onRequest = (request: SceneRequest) => {
+    if (request === 'pause') {
+      pause();
+    } else if (request === 'title') {
       setScene(new TitleScene(() => setScene(gameScene)));
     } else if (request === 'gameOver') {
       // In the finale, a Game Over puts everything back and starts the fight again.
       const retry = game.retryCheckpoint;
       setScene(
-        new GameOverScene(() => {
-          startEra(era, retry, game.score);
-          persist();
-          setScene(gameScene);
-        }),
+        new GameOverScene(() =>
+          thenScores(() => {
+            startEra(era, retry, game.score);
+            persist();
+            setScene(gameScene);
+          }),
+        ),
       );
     } else if (request === 'eraComplete') {
       const next = era + 1;
@@ -135,12 +197,13 @@ async function boot(): Promise<void> {
           score: game.score,
           deaths: game.stats.deaths,
           reducedMotion,
-          onDone: () => {
-            // Back on the roof, the Deprecator gone, everything yours.
-            startEra(era, game.checkpoint, game.score);
-            persist();
-            setScene(new TitleScene(() => setScene(gameScene)));
-          },
+          onDone: () =>
+            thenScores(() => {
+              // Back on the roof, the Deprecator gone, everything yours.
+              startEra(era, game.checkpoint, game.score);
+              persist();
+              setScene(new TitleScene(() => setScene(gameScene)));
+            }),
         }),
       );
     }
