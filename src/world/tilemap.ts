@@ -8,11 +8,16 @@ import type { Era, FeatureId } from '../core/features';
  *   '^'  spikes (not solid; deadly once DEATH exists)
  *   '~'  hot bricks (solid; deadly to stand on once DEATH exists, and only red with COLOUR)
  *   'D'  door (solid until a switch on the same screen is hit)
+ *   'w'  water (swim in it)
+ *   'h'  a hollow wall: drawn like a wall, but you can walk through it (TRANSPARENCY shows it)
  *   'P'  player spawn (feet at the bottom of the tile, horizontally centred)
  *   'e'  walker enemy (exists once ENEMIES does)
  *   'F'  checkpoint flag (works once CHECKPOINTS exists)
  *   's'  switch (hit it with a thrown pebble)
  *   'k'  knight (Era 3: armoured, takes 3 sword hits)
+ *   'g'  ghost (Era 4: floats through walls towards you)
+ *   't'  torch (a light),  'b'  brazier (light it by touching it; it's a checkpoint too)
+ *   'C'  where the Chase starts,  'X'  the Chase's finish line,  'Z'  where the Deprecator appears
  *   'B'  The Block (Era 1 boss),  'V'  Flicker (Era 2 boss),  'W'  The Warden (Era 3 boss)
  *   any key of `npcs` → a character you can talk to (once NPCS exists)
  *   Entity positions are feet positions: bottom of the tile, horizontally centred.
@@ -36,7 +41,20 @@ export interface PickupSpawn {
 }
 
 export type EntityKind =
-  'walker' | 'knight' | 'block' | 'flicker' | 'warden' | 'flag' | 'switch' | 'npc';
+  | 'walker'
+  | 'knight'
+  | 'block'
+  | 'flicker'
+  | 'warden'
+  | 'flag'
+  | 'switch'
+  | 'npc'
+  | 'ghost'
+  | 'torch'
+  | 'brazier'
+  | 'chase'
+  | 'exit'
+  | 'deprecator';
 
 export interface EntitySpawn {
   kind: EntityKind;
@@ -63,7 +81,15 @@ export interface SolidQuery {
   isSolid(tx: number, ty: number): boolean;
 }
 
-export const Tile = { Empty: 0, Solid: 1, Spikes: 2, Hot: 3, Door: 4 } as const;
+export const Tile = {
+  Empty: 0,
+  Solid: 1,
+  Spikes: 2,
+  Hot: 3,
+  Door: 4,
+  Water: 5,
+  Hollow: 6,
+} as const;
 export type Tile = (typeof Tile)[keyof typeof Tile];
 
 /** Spikes only hurt in the bottom part of their tile... */
@@ -115,6 +141,13 @@ export class TileMap implements SolidQuery {
     return SOLID_TILES.has(this.tileAt(tx, ty));
   }
 
+  /** True if the centre of the box is in water. */
+  inWater(box: { x: number; y: number; w: number; h: number }): boolean {
+    const tx = Math.floor((box.x + box.w / 2) / TILE);
+    const ty = Math.floor((box.y + box.h / 2) / TILE);
+    return this.tileAt(tx, ty) === Tile.Water;
+  }
+
   /** True if the box is standing on (or touching the top of) a hot brick. */
   standsOnHot(box: { x: number; y: number; w: number; h: number }): boolean {
     const feet = box.y + box.h;
@@ -155,6 +188,12 @@ const ENTITY_CHARS: Record<string, EntityKind> = {
   k: 'knight',
   B: 'block',
   W: 'warden',
+  g: 'ghost',
+  t: 'torch',
+  b: 'brazier',
+  C: 'chase',
+  X: 'exit',
+  Z: 'deprecator',
   V: 'flicker',
   F: 'flag',
   s: 'switch',
@@ -181,6 +220,8 @@ export function parseLevel(def: LevelDef): ParsedLevel {
       else if (ch === '^') tiles[ty * width + tx] = Tile.Spikes;
       else if (ch === '~') tiles[ty * width + tx] = Tile.Hot;
       else if (ch === 'D') tiles[ty * width + tx] = Tile.Door;
+      else if (ch === 'w') tiles[ty * width + tx] = Tile.Water;
+      else if (ch === 'h') tiles[ty * width + tx] = Tile.Hollow;
       else if (ch === 'P') spawn = feet;
       else if (ch in ENTITY_CHARS) entities.push({ kind: ENTITY_CHARS[ch], ...feet });
       else if (def.npcs && ch in def.npcs) entities.push({ kind: 'npc', id: ch, ...feet });

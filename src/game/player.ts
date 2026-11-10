@@ -50,6 +50,13 @@ const SWING_GAP = 0.06;
 const COMBO_WINDOW = 0.35;
 const COMBO_RECOVERY = 0.4;
 
+/** Water: slower, floatier, and you can swim upwards with jump. */
+export const WATER_SPEED = 0.6;
+export const WATER_GRAVITY = 0.35;
+export const WATER_MAX_FALL = 70;
+export const SWIM_STROKE = 210;
+const SWIM_COOLDOWN = 0.22;
+
 /** PUNCH: a short jab in front of you. */
 export const PUNCH_TIME = 0.15;
 export const PUNCH_COOLDOWN = 0.3;
@@ -76,6 +83,11 @@ export interface PlayerAbilities {
   dash?: boolean;
 }
 
+/** Where the player is, as opposed to what they can do. */
+export interface PlayerEnv {
+  water: boolean;
+}
+
 export interface Bounds {
   minX: number;
   maxX: number;
@@ -88,6 +100,7 @@ export interface PlayerEvents {
   punched: boolean;
   swung: boolean;
   dashed: boolean;
+  swam: boolean;
 }
 
 export type PlayerState = 'normal' | 'hang' | 'climb';
@@ -128,6 +141,9 @@ export class Player {
   private comboT = 0;
   private dashCooldown = 0;
   private airDash = true;
+  private swimCooldown = 0;
+  /** In water this step (for drawing and effects). */
+  inWater = false;
   private wallCoyote = 0;
   private wallDir: 1 | -1 = 1;
   private pushT = 0;
@@ -187,6 +203,7 @@ export class Player {
     abilities: PlayerAbilities,
     map: SolidQuery,
     bounds?: Bounds,
+    env: PlayerEnv = { water: false },
   ): PlayerEvents {
     this.prevX = this.box.x;
     this.prevY = this.box.y;
@@ -206,7 +223,10 @@ export class Player {
       punched: false,
       swung: false,
       dashed: false,
+      swam: false,
     };
+    this.inWater = env.water;
+    this.swimCooldown = Math.max(0, this.swimCooldown - dt);
 
     if (this.state === 'climb') {
       this.updateClimb(dt, events);
@@ -256,6 +276,15 @@ export class Player {
       events.dashed = true;
     }
     if (this.dashT > 0) this.vx = this.facing * DASH_SPEED;
+    else if (env.water) this.vx *= WATER_SPEED;
+
+    // Swimming: jump strokes upwards, any time.
+    if (env.water && controls.jumpPressed && abilities.jump && this.swimCooldown <= 0) {
+      this.vy = -SWIM_STROKE;
+      this.swimCooldown = SWIM_COOLDOWN;
+      this.buffer = 0;
+      events.swam = true;
+    }
 
     // Jump with buffering (press slightly early) and coyote time (press slightly late).
     this.buffer =
@@ -281,8 +310,10 @@ export class Player {
       this.vy = -JUMP_SPEED * JUMP_CUT;
     }
 
-    // Gravity pauses during a dash.
-    this.vy = this.dashT > 0 ? 0 : Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+    // Gravity pauses during a dash, and is gentle in water.
+    if (this.dashT > 0) this.vy = 0;
+    else if (env.water) this.vy = Math.min(this.vy + GRAVITY * WATER_GRAVITY * dt, WATER_MAX_FALL);
+    else this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
 
     const hitWall = moveX(this.box, this.vx * dt, map);
     if (hitWall) this.vx = 0;

@@ -21,6 +21,16 @@ export class Camera {
   mode: CameraMode = 'fixed';
   /** When set, the camera stays on this screen (a boss arena). */
   lockX: number | null = null;
+  /** CAMERA: how far ahead of the player to look (eased towards `leadTarget`). */
+  lead = 0;
+  leadTarget = 0;
+  /** A cutscene's point of interest: the camera pans to centre it. Beats everything. */
+  focusX: number | null = null;
+  /** CAMERA: 1 = normal; >1 pulls in close (drawn around the screen centre). */
+  zoom = 1;
+  zoomTarget = 1;
+  /** CAMERA: screen shake strength in world units; decays by itself. */
+  shake = 0;
 
   constructor(
     private levelWidth: number,
@@ -42,14 +52,20 @@ export class Camera {
       this.x = this.lockX ?? clamp(Math.floor(targetX / VIEW_W) * VIEW_W, 0, maxX);
       this.y = clamp(Math.floor(targetY / VIEW_H) * VIEW_H, 0, maxY);
     } else {
-      // A lock (boss arena) replaces the player as the horizontal target.
-      const wantX = this.lockX ?? clamp(targetX - VIEW_W / 2, 0, maxX);
+      // A cutscene focus, then a lock (boss arena), replace the player as the target.
+      this.lead += (this.leadTarget - this.lead) * 0.04;
+      const focus = this.focusX === null ? null : clamp(this.focusX - VIEW_W / 2, 0, maxX);
+      const wantX = focus ?? this.lockX ?? clamp(targetX + this.lead - VIEW_W / 2, 0, maxX);
       const wantY = clamp(targetY - VIEW_H * SCROLL_TARGET_Y, 0, maxY);
       this.x += (wantX - this.x) * FOLLOW;
       this.y += (wantY - this.y) * FOLLOW;
       if (Math.abs(wantX - this.x) < 0.05) this.x = wantX;
       if (Math.abs(wantY - this.y) < 0.05) this.y = wantY;
     }
+
+    this.zoom += (this.zoomTarget - this.zoom) * 0.05;
+    this.shake *= 0.88;
+    if (this.shake < 0.05) this.shake = 0;
 
     // Screen flips (and the first frame) shouldn't be interpolated across.
     if (this.mode !== 'scroll' || Math.abs(this.x - this.prevX) > VIEW_W / 2) {

@@ -39,6 +39,15 @@ export const FEATURE_IDS = [
   'SWORD',
   'DASH',
   'SAVE_GAME',
+  // Era 4 — 32-BIT
+  'TRANSPARENCY',
+  'PARTICLES',
+  'LIGHTING',
+  'CAMERA',
+  'CD_AUDIO',
+  'VOICE',
+  'DEPTH',
+  'CUTSCENE',
 ] as const;
 
 export type FeatureId = (typeof FEATURE_IDS)[number];
@@ -244,6 +253,62 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     era: 3,
     description: 'The game can now save! (It always could.)',
     hint: 'IT ALWAYS COULD. SHH',
+  },
+  TRANSPARENCY: {
+    id: 'TRANSPARENCY',
+    label: 'TRANSPARENCY',
+    era: 4,
+    description: 'Alpha blending: water, ghosts and walls you can see through.',
+    hint: 'THAT WALL LOOKS THIN',
+  },
+  PARTICLES: {
+    id: 'PARTICLES',
+    label: 'PARTICLES',
+    era: 4,
+    description: 'Dust, sparks, splashes and debris.',
+    hint: 'SO MANY PARTICLES',
+  },
+  LIGHTING: {
+    id: 'LIGHTING',
+    label: 'LIGHTING',
+    era: 4,
+    description: 'Real lights, so real darkness. Light the braziers.',
+    hint: 'TOUCH BRAZIERS TO LIGHT THEM',
+  },
+  CAMERA: {
+    id: 'CAMERA',
+    label: 'CAMERA',
+    era: 4,
+    description: 'A camera that looks ahead and shakes on impact.',
+    hint: 'CINEMATIC',
+  },
+  CD_AUDIO: {
+    id: 'CD_AUDIO',
+    label: 'CD AUDIO',
+    era: 4,
+    description: 'A full soundtrack instead of the chiptune.',
+    hint: 'CD QUALITY',
+  },
+  VOICE: {
+    id: 'VOICE',
+    label: 'VOICE',
+    era: 4,
+    description: 'Grunts, shouts and characters who talk out loud.',
+    hint: 'HUP! HAH!',
+  },
+  DEPTH: {
+    id: 'DEPTH',
+    label: 'DEPTH',
+    era: 4,
+    description: 'Pseudo-3D backgrounds and foreground layers.',
+    hint: 'TWO AND A HALF D',
+  },
+  CUTSCENE: {
+    id: 'CUTSCENE',
+    label: 'CUTSCENE',
+    era: 4,
+    description: 'An in-engine cinematic.',
+    hint: 'GRAB SOME POPCORN',
   },
 };
 

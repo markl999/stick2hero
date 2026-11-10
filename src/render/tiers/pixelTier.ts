@@ -24,6 +24,18 @@ import { GLYPH_H, textWidth } from '../font3x5';
 import type { PixelCanvas } from '../pixelCanvas';
 import { stickPose } from '../stickman';
 import {
+  drawCutsceneOverlay,
+  drawDeprecator,
+  drawForeground,
+  drawGhost,
+  drawLightSource,
+  drawLighting,
+  drawNightSky,
+  drawParticles,
+  drawWater,
+  drawWave,
+} from './era4Draw';
+import {
   dashGhosts,
   drawDialogue,
   drawFace,
@@ -70,6 +82,8 @@ export interface PixelStyle {
   rich?: boolean;
   bevel?: { light: string; dark: string };
   parallax?: boolean;
+  /** Era 4's moonlit night (and everything 32-bit that comes with it). */
+  night?: boolean;
 }
 
 const ERA0: PixelStyle = {
@@ -159,8 +173,21 @@ const RICH: PixelStyle = {
   parallax: true,
 };
 
+/** Era 4 (32-BIT): a moonlit ruin. Blue-grey stone, moss, a night sky. */
+const NIGHT: PixelStyle = {
+  ...RICH,
+  paper: '#0b1026',
+  tiles: '#56657a',
+  mortar: '#323c4c',
+  grass: '#3d8b5a',
+  bevel: { light: '#8292a8', dark: '#2a3240' },
+  parallax: false,
+  night: true,
+};
+
 function baseStyle(game: Game, colour: 0 | 4 | 16): PixelStyle {
   if (game.level.era === 0) return ERA0;
+  if (game.level.era >= 4) return NIGHT;
   if (game.level.era >= 3 && game.features.has('PARALLAX')) return RICH;
   if (colour === 16) return COLOUR16;
   if (colour === 4) return COLOUR4;
@@ -183,6 +210,7 @@ function inverted(style: PixelStyle): PixelStyle {
   out.grass = null;
   out.bevel = undefined;
   out.parallax = false;
+  out.night = false;
   return out;
 }
 
@@ -220,26 +248,36 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
   let style = baseStyle(game, level);
   if (game.flashing) style = inverted(style);
 
+  // CAMERA: zoom around the middle of the screen, and shake.
+  const zoom = cam.zoom;
+  const shakeX = cam.shake ? (Math.random() - 0.5) * 2 * cam.shake * s : 0;
+  const shakeY = cam.shake ? (Math.random() - 0.5) * 2 * cam.shake * s : 0;
+  const zs = s * zoom;
   const frame = (st: PixelStyle): Frame => ({
     p,
     game,
     style: st,
     alpha,
-    s,
+    s: zs,
     fs: Math.max(1, Math.round(2 * s)),
     camX,
     camY,
-    X: (wx) => Math.round((wx - camX) * s),
-    Y: (wy) => Math.round((wy - camY) * s) + hop,
+    X: (wx) => Math.round((wx - camX - VIEW_W / 2) * zs + p.width / 2 + shakeX),
+    Y: (wy) => Math.round((wy - camY - VIEW_H / 2) * zs + p.height / 2 + shakeY) + hop,
   });
   const f = frame(style);
 
   const parallaxIntro = moment?.feature === 'PARALLAX' ? t : null;
+  const depthIntro = moment?.feature === 'DEPTH' ? t : null;
   const world = (fr: Frame) => {
     p.clear(fr.style.paper);
     if (fr.style.parallax) drawParallax(fr, parallaxIntro);
+    if (fr.style.night) drawNightSky(fr, depthIntro);
     if (game.enemiesActive && game.warden) drawWarden(fr, game.warden);
     drawTiles(fr);
+    for (const light of game.lights) {
+      if (onScreen(fr, light.x, light.y, TILE * 2)) drawLightSource(fr, light);
+    }
     drawFlags(fr);
     drawSwitches(fr);
     drawPickups(fr);
@@ -253,9 +291,20 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
       }
       if (game.boss) drawBlock(fr, game.boss);
       if (game.flicker) drawFlicker(fr, game.flicker);
+      for (const ghost of game.ghosts) {
+        if (onScreen(fr, ghost.box.x, ghost.box.y, TILE * 2)) drawGhost(fr, ghost);
+      }
     }
     drawProjectiles(fr);
     drawPlayer(fr);
+    drawParticles(fr);
+    if (fr.style.night) {
+      drawForeground(fr);
+      drawLighting(fr);
+    }
+    // The Deprecator glows with its own wrongness: the dark doesn't hide it.
+    drawDeprecator(fr);
+    drawWave(fr);
   };
 
   // COLOUR: the new palette floods outward from the pickup over the old one.
@@ -272,6 +321,7 @@ export function drawPixelTier(p: PixelCanvas, game: Game, alpha: number): void {
 
   const npc = game.talkableNpc;
   if (npc) drawTalkPrompt(f, npc);
+  drawCutsceneOverlay(f);
   drawHud(f);
   if (moment?.feature === 'SAVE_GAME') drawSaveIcon(f, moment.t);
   drawMoment(f);
@@ -327,6 +377,26 @@ function drawTiles(f: Frame): void {
           p.line(a, bottom, tip, spikeTop);
           p.line(tip, spikeTop, a + w - 1, bottom);
         }
+        continue;
+      }
+      if (tile === Tile.Water) {
+        const surface = map.tileAt(tx, ty - 1) !== Tile.Water;
+        drawWater(f, left, top, right - left + 1, bottom - top + 1, surface);
+        continue;
+      }
+      if (tile === Tile.Hollow) {
+        // A hollow wall: a wall until TRANSPARENCY shows you can see (and walk) through it.
+        const see = game.features.has('TRANSPARENCY');
+        p.withAlpha(see ? 0.3 : 1, () => {
+          p.color(style.tiles);
+          p.rect(left, top, right - left + 1, bottom - top + 1);
+          p.color(style.mortar);
+          const mid = Math.round((top + bottom) / 2);
+          p.hline(left, right, mid);
+          p.hline(left, right, bottom);
+          p.vline(Math.round((left + right) / 2), top, mid);
+          p.vline(right, mid, bottom);
+        });
         continue;
       }
       if (tile === Tile.Door) {

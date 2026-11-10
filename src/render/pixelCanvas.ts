@@ -8,6 +8,7 @@ import { glyph, GLYPH_H, textWidth } from './font3x5';
 export class PixelCanvas {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
+  private shade: HTMLCanvasElement | null = null;
 
   constructor(width: number, height: number) {
     this.canvas = document.createElement('canvas');
@@ -46,6 +47,53 @@ export class PixelCanvas {
     this.ctx.clip();
     fn();
     this.ctx.restore();
+  }
+
+  /** TRANSPARENCY: draw everything inside `fn` at this opacity. */
+  withAlpha(alpha: number, fn: () => void): void {
+    const before = this.ctx.globalAlpha;
+    this.ctx.globalAlpha = before * Math.max(0, Math.min(1, alpha));
+    fn();
+    this.ctx.globalAlpha = before;
+  }
+
+  /**
+   * LIGHTING: cover everything in darkness, except soft circles of light. The darkness
+   * is drawn on its own layer with the lights cut out of it, then laid over the scene.
+   */
+  darkness(color: string, lights: readonly { x: number; y: number; r: number }[]): void {
+    this.shade ??= document.createElement('canvas');
+    const shade = this.shade;
+    if (shade.width !== this.width || shade.height !== this.height) {
+      shade.width = this.width;
+      shade.height = this.height;
+    }
+    const ctx = shade.getContext('2d');
+    if (!ctx) return;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, shade.width, shade.height);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, shade.width, shade.height);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const light of lights) {
+      if (light.r <= 0) continue;
+      const g = ctx.createRadialGradient(
+        light.x,
+        light.y,
+        light.r * 0.15,
+        light.x,
+        light.y,
+        light.r,
+      );
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(0.6, 'rgba(0,0,0,0.75)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(light.x, light.y, light.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    this.ctx.drawImage(shade, 0, 0);
   }
 
   imageData(): ImageData {

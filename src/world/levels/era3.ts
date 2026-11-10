@@ -12,7 +12,8 @@ import { composeScreens } from './compose';
  * - C: FACE, then a little hill.
  * - D: NPCS + DIALOGUE, then the first character: a placeholder that was never finished.
  * - E: The "TODO" wizard, then OUTFIT.
- * - F: SWORD, then two knights (punches clank off their armour).
+ * - F: SWORD, then two knights, far enough apart to fight one at a time (punches clank
+ *   off their armour).
  * - G: DASH, then a 4-tile spike pit (too wide to jump; jump and dash), then a knight.
  * - H: SAVE GAME (it always could), an elder with a warning, a flag.
  * - I: The Warden. Slash its fists while they're stuck in the floor, then its head.
@@ -92,7 +93,7 @@ const F_SWORD = [
   '................',
   '................',
   '................',
-  '.6......k....k..',
+  '.6....k.......k.',
   '################',
 ];
 

@@ -205,15 +205,15 @@ Controls are always available, so nobody is locked out by an unlock. A feature g
 
 ## 10. Audio progression
 
-| Stage               | Tech                                                                            |
-| ------------------- | ------------------------------------------------------------------------------- |
-| Tape loader         | Web Audio: pilot-tone oscillator + filtered noise bursts                        |
-| Silence             | —                                                                               |
-| Beep                | One square-wave oscillator                                                      |
-| SFX                 | Generated sfxr-style effects                                                    |
-| Chiptune            | A 3–4 channel tracker-style synth playing patterns written in code              |
-| Samples/Stereo      | Short synthesised or recorded samples, with stereo panning                      |
-| CD Audio / Adaptive | Pre-made music tracks (OGG), layered stems for adaptive mixing (**source TBD**) |
+| Stage               | Tech                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Tape loader         | Web Audio: pilot-tone oscillator + filtered noise bursts                                                    |
+| Silence             | —                                                                                                           |
+| Beep                | One square-wave oscillator                                                                                  |
+| SFX                 | Generated sfxr-style effects                                                                                |
+| Chiptune            | A 3–4 channel tracker-style synth playing patterns written in code                                          |
+| Samples/Stereo      | Short synthesised or recorded samples, with stereo panning                                                  |
+| CD Audio / Adaptive | A fuller track composed in code (pads, bass, breakbeat, lead with echo, reverb); adaptive layering in Era 5 |
 
 ## 11. Technical approach
 
@@ -257,7 +257,7 @@ Multiplayer, true 3D, procedural levels, monetisation or ads, mobile store build
 | M1 ✅ | Era 0 + Tape Loader       | The full intro and BOOT chapter, all 7 features with their moments, autosave.                                                                                           |
 | M2 ✅ | Vertical slice (Eras 0–2) | Enemies, death, lives, colour, scrolling, chiptune, two bosses. **Playtest with 3–5 people.**                                                                           |
 | M3 ✅ | Era 3                     | Parallax, samples, face, NPCs, sword, dash, boss.                                                                                                                       |
-| M4    | Era 4                     | Transparency, particles, lighting, CD audio, cutscene, chase.                                                                                                           |
+| M4 ✅ | Era 4                     | Transparency, particles, lighting, CD audio, cutscene, chase.                                                                                                           |
 | M5    | Era 5 + Finale            | HD, shadows, physics, cape, post-FX, Deprecator, ending.                                                                                                                |
 | M6    | Polish & ship             | Secrets, Feature Menu, accessibility, performance pass, public release.                                                                                                 |
 
@@ -306,6 +306,7 @@ The idea is in the same family as "the game evolves as you play" titles (e.g. _E
 | 7   | Players never lose features except during the Deprecator finale.                                                                                                                                                                                                                      |
 | 8   | Target length: 60–90 minutes.                                                                                                                                                                                                                                                         |
 | 9   | **DASH on Shift / L** (gamepad LB/RB/RT). THROW keeps Special (C/K, gamepad B). Talking to NPCs is ↑.                                                                                                                                                                                 |
+| 10  | **Era 4–5 music is composed in code** (`src/core/cdMusic.ts`), like everything else. A real recording can replace it later without touching the game.                                                                                                                                 |
 
 ### Still open (not blocking M0–M2)
 

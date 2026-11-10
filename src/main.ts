@@ -103,8 +103,14 @@ async function boot(): Promise<void> {
   startEra(era, save.checkpoint, save.score);
   features.onChange((id) => {
     persist();
-    if (id === 'MUSIC') audio.setMusic(features.has('MUSIC') && scene.name !== 'tape');
+    if (id === 'MUSIC' || id === 'CD_AUDIO') syncMusic();
   });
+
+  /** The soundtrack plays everywhere once you have it, except over the tape loader. */
+  const syncMusic = () => {
+    if (scene?.name === 'tape') return audio.setMusic(null);
+    audio.setMusic(features.has('CD_AUDIO') ? 'cd' : features.has('MUSIC') ? 'chip' : null);
+  };
 
   // --- Scenes -----------------------------------------------------------------------
   let resolutionOverride: Resolution | null = null;
@@ -125,8 +131,7 @@ async function boot(): Promise<void> {
 
   const setScene = (next: Scene) => {
     scene = next;
-    // MUSIC plays everywhere once you have it, except over the tape loader.
-    audio.setMusic(features.has('MUSIC') && next.name !== 'tape');
+    syncMusic();
     applyResolution();
   };
   const applyResolution = () => {

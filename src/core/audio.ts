@@ -1,4 +1,8 @@
+import { CdMusic } from './cdMusic';
 import { ChipMusic } from './music';
+
+/** Which soundtrack: MUSIC's chiptune, CD AUDIO's full track, or silence. */
+export type MusicTrack = 'chip' | 'cd' | null;
 
 /**
  * Procedural audio via Web Audio. Browsers only allow audio after a user gesture, so
@@ -38,7 +42,26 @@ export type SfxName =
   | 'slam'
   | 'dash'
   | 'talk'
-  | 'save';
+  | 'save'
+  | 'splash'
+  | 'ignite'
+  | 'glitch'
+  | 'voiceHup'
+  | 'voiceHah'
+  | 'voiceOof'
+  | 'voiceNpc'
+  | 'voiceBoss';
+
+/** Vowel formants (Hz): F1, F2, F3. */
+const VOWELS = {
+  a: [800, 1150, 2900],
+  e: [400, 2000, 2600],
+  i: [300, 2300, 3000],
+  o: [450, 800, 2830],
+  u: [325, 700, 2530],
+  uh: [600, 1000, 2500],
+} as const;
+type Vowel = keyof typeof VOWELS;
 
 export interface SfxOptions {
   /** -1 (left) .. 1 (right). STEREO. */
@@ -57,11 +80,12 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
-  private music: ChipMusic | null = null;
+  private chip: ChipMusic | null = null;
+  private cd: CdMusic | null = null;
+  private track: MusicTrack = null;
   /** Where sweep() and noise() send their output while a sound is being built. */
   private bus: AudioNode | null = null;
   private reverb: ConvolverNode | null = null;
-  private musicWanted = false;
 
   unlock(): void {
     if (!this.ctx) {
@@ -81,24 +105,29 @@ export class AudioEngine {
     }
   }
 
-  /** MUSIC on or off. Starts as soon as audio is allowed, fading in. */
-  setMusic(on: boolean): void {
-    this.musicWanted = on;
+  /** Choose the soundtrack. Starts as soon as audio is allowed; tracks crossfade. */
+  setMusic(track: MusicTrack): void {
+    this.track = track;
     this.syncMusic();
   }
 
   private syncMusic(): void {
     const ctx = this.ctx;
-    if (!ctx || !this.master) return;
-    if (this.musicWanted && ctx.state === 'running') {
-      this.music ??= new ChipMusic(
-        ctx,
-        this.master,
-        () => (this.noiseBuffer ??= makeNoiseBuffer(ctx)),
-      );
-      this.music.start();
-    } else if (!this.musicWanted) {
-      this.music?.stop();
+    const master = this.master;
+    if (!ctx || !master || ctx.state !== 'running') return;
+    const noise = () => (this.noiseBuffer ??= makeNoiseBuffer(ctx));
+    if (this.track === 'chip') {
+      this.cd?.stop();
+      this.chip ??= new ChipMusic(ctx, master, noise);
+      this.chip.start();
+    } else if (this.track === 'cd') {
+      // The chiptune gives way to the "real" soundtrack.
+      this.chip?.stop(1.5);
+      this.cd ??= new CdMusic(ctx, master, noise);
+      this.cd.start();
+    } else {
+      this.chip?.stop();
+      this.cd?.stop();
     }
   }
 
@@ -235,6 +264,49 @@ export class AudioEngine {
           this.noise(t + i * 0.09, 0.05, 0.08, 2500, 'bandpass');
         }
         break;
+      case 'splash':
+        this.noise(t, 0.25, 0.25, 1800, 'bandpass', 600);
+        this.noise(t + 0.05, 0.15, 0.12, 4000, 'highpass');
+        break;
+      case 'ignite':
+        this.noise(t, 0.4, 0.3, 300, 'lowpass', 2500);
+        break;
+      case 'glitch':
+        // Digital tearing: random square bursts.
+        for (let i = 0; i < 10; i++) {
+          this.sweep(
+            'square',
+            80 + Math.random() * 2000,
+            60 + Math.random() * 3000,
+            t + i * 0.05,
+            0.05,
+            0.08,
+          );
+        }
+        this.noise(t, 0.6, 0.2, 6000, 'highpass');
+        break;
+      case 'voiceHup':
+        this.vowel(t, 0.12, 'uh', 'uh', 230, 270, 0.25, true);
+        break;
+      case 'voiceHah':
+        this.vowel(t, 0.2, 'a', 'a', 210, 170, 0.3, true);
+        break;
+      case 'voiceOof':
+        this.vowel(t, 0.32, 'o', 'u', 190, 120, 0.3, false);
+        break;
+      case 'voiceNpc': {
+        const vowels: Vowel[] = ['a', 'e', 'i', 'o', 'u'];
+        const v = vowels[Math.floor(Math.random() * vowels.length)];
+        const pitch = 250 + Math.random() * 90;
+        this.vowel(t, 0.09, v, v, pitch, pitch * 1.05, 0.18, Math.random() < 0.4);
+        break;
+      }
+      case 'voiceBoss': {
+        const vowels: Vowel[] = ['a', 'o', 'uh', 'e'];
+        const v = vowels[Math.floor(Math.random() * vowels.length)];
+        this.vowel(t, 0.16, v, v, 70 + Math.random() * 15, 62, 0.35, false, true);
+        break;
+      }
       case 'bossDie':
         for (let i = 0; i < 8; i++) {
           this.noise(t + i * 0.18, 0.15, 0.22, 900 - i * 80);
@@ -242,6 +314,58 @@ export class AudioEngine {
         }
         break;
     }
+  }
+
+  /**
+   * VOICE: formant synthesis. A buzzy source through three band-pass filters tuned to a
+   * vowel (gliding to another), with a falling or rising pitch. `breath` adds an "h";
+   * `menace` distorts it (for the Deprecator).
+   */
+  private vowel(
+    start: number,
+    duration: number,
+    from: Vowel,
+    to: Vowel,
+    pitchFrom: number,
+    pitchTo: number,
+    volume: number,
+    breath: boolean,
+    menace = false,
+  ): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const out = this.bus ?? this.master;
+    const source = ctx.createOscillator();
+    source.type = 'sawtooth';
+    source.frequency.setValueAtTime(pitchFrom, start);
+    source.frequency.exponentialRampToValueAtTime(pitchTo, start + duration);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(volume, start + 0.015);
+    env.gain.setValueAtTime(volume, start + duration * 0.7);
+    env.gain.linearRampToValueAtTime(0, start + duration);
+    let tail: AudioNode = env;
+    if (menace) {
+      const shaper = ctx.createWaveShaper();
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) curve[i] = Math.tanh((i / 128 - 1) * 4);
+      shaper.curve = curve;
+      tail = env.connect(shaper);
+    }
+    VOWELS[from].forEach((freq, i) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 8 + i * 4;
+      filter.frequency.setValueAtTime(freq, start);
+      filter.frequency.linearRampToValueAtTime(VOWELS[to][i], start + duration);
+      const g = ctx.createGain();
+      g.gain.value = [1, 0.6, 0.3][i] * 3;
+      source.connect(filter).connect(g).connect(env);
+    });
+    tail.connect(out);
+    source.start(start);
+    source.stop(start + duration + 0.02);
+    if (breath) this.noise(start, 0.05, volume * 0.5, 2500, 'bandpass');
   }
 
   private sweep(

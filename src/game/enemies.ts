@@ -378,6 +378,8 @@ const KNIGHT_SIGHT = 90;
 const KNIGHT_FLINCH = 0.3;
 const KNIGHT_KNOCKBACK = 40;
 const KNIGHT_STEP_EVERY = 0.42;
+/** Knights keep to their post: they won't patrol (or chase) further than this from it. */
+export const KNIGHT_PATROL = 80;
 
 export type KnightHit = 'damaged' | 'killed' | 'blocked' | 'ignored';
 
@@ -400,9 +402,11 @@ export class Knight {
   private knockback = 0;
   private lastHit = -1;
   private stepT = 0;
+  private readonly homeX: number;
 
   constructor(feetX: number, feetY: number) {
     this.box = { x: feetX - KNIGHT_W / 2, y: feetY - KNIGHT_H, w: KNIGHT_W, h: KNIGHT_H };
+    this.homeX = this.box.x;
     this.prevX = this.box.x;
     this.prevY = this.box.y;
   }
@@ -442,7 +446,11 @@ export class Knight {
       const below = Math.floor((this.box.y + this.box.h + 1) / TILE);
       const level = Math.floor((this.box.y + this.box.h - 1) / TILE);
       const edge = onGround && (!map.isSolid(tx, below) || map.tileAt(tx, level) === Tile.Spikes);
-      if (hitWall || edge) this.dir = this.dir > 0 ? -1 : 1;
+      const offPost = (this.box.x - this.homeX) * this.dir > KNIGHT_PATROL;
+      if (hitWall || edge || offPost) {
+        this.dir = this.dir > 0 ? -1 : 1;
+        this.charging = false;
+      }
     }
 
     this.stepT += dt * (this.charging ? 2 : 1);

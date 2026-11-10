@@ -41,7 +41,8 @@ function setup(
   return { game, features, input, step };
 }
 
-const KNIGHT_ROOM = ['................', '..P......k......', '################'];
+// The knight is within its patrol range of the player.
+const KNIGHT_ROOM = ['................', '..P....k........', '################'];
 
 describe('SWORD and knights', () => {
   it('punches clank off armour', () => {
@@ -268,7 +269,22 @@ describe('Era 3 level', () => {
       );
       const blocked = p.onGround && p.vx === 0 && game.moment === null;
 
-      if (enemyAhead && features.has('SWORD') && gap < 18 && cooldown === 0) {
+      // An enemy right next to you (either side): face it and swing.
+      const close = [...game.walkers, ...game.knights].find(
+        (e) =>
+          e.alive &&
+          Math.abs(e.box.x + e.box.w / 2 - p.feetX) < 26 &&
+          Math.abs(e.box.y + e.box.h - p.feetY) < 4,
+      );
+      if (close && features.has('SWORD')) {
+        // Stand your ground: turn to face it if needed, otherwise stop, and keep swinging.
+        const toward = close.box.x + close.box.w / 2 < p.feetX ? -1 : 1;
+        input.down = new Set(p.facing === toward ? [] : [toward < 0 ? 'left' : 'right']);
+        if (cooldown === 0) {
+          input.pressed.add('attack');
+          cooldown = 14;
+        }
+      } else if (enemyAhead && features.has('SWORD') && gap < 18 && cooldown === 0) {
         input.pressed.add('attack');
         cooldown = 12;
       } else if (enemyAhead && !features.has('SWORD') && gap < 10) {
