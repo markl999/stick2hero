@@ -6,6 +6,8 @@ until the game has grown from a 1978-style prototype into a modern one and the s
 
 See [PRD.md](PRD.md) for the full design.
 
+**Play it:** https://markl999.github.io/stick2hero/ (published from `main` by GitHub Actions).
+
 ## Running
 
 ```sh
@@ -46,6 +48,7 @@ from its heading). Turn off Eras 1–5 and the last roof is a white void again.
 M5 is done: the whole game plays from the tape loader to the ending. BOOT, ARCADE (The Block),
 8-BIT (Flicker), 16-BIT (The Warden), 32-BIT (the cutscene and the Chase) and MODERN: HD, real
 shadows and stealth, physics, the cape, far too much bloom, then the Deprecator, who rolls the
-game back to a white screen while you win it back. M6 has started: the pause menu (rebindable
-keys, volume, new game) and the first secret, HIGH SCORES, are in. Still to come: the other
-secrets, the Feature Menu, the rest of the accessibility options and polish.
+game back to a white screen while you win it back. M6 is nearly done: the pause menu (rebindable
+keys, volume, accessibility, new game), all eight secrets, the post-game Feature Menu and
+completion screen, a performance pass and a GitHub Pages deploy. Still to come: a human
+playtest, and anyone actually listening to the audio.

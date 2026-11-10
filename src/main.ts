@@ -11,6 +11,7 @@ import { loadSettings, volumeGain, writeSettings, type Settings } from './core/s
 import { DebugOverlay } from './debug/overlay';
 import { Game, type Point } from './game/game';
 import { Display, type Resolution } from './render/display';
+import { HdQuality } from './render/quality';
 import { GameOverScene, TitleScene } from './scenes/cards';
 import { EndingScene } from './scenes/ending';
 import { EraEndScene } from './scenes/eraEnd';
@@ -345,6 +346,7 @@ async function boot(): Promise<void> {
       syncMusic();
     },
     render: (alpha) => {
+      watchHdQuality();
       applyResolution();
       scene.render(display.pixel, alpha);
       display.setPostFx(scene.postFx?.() ?? null);
@@ -353,6 +355,17 @@ async function boot(): Promise<void> {
       debug?.update();
     },
   });
+
+  /** HD on a machine that can't keep up: draw at a lower resolution (it's scaled smoothly). */
+  const hdQuality = new HdQuality();
+  let lastRender = 0;
+  const watchHdQuality = () => {
+    const now = performance.now();
+    const interval = now - lastRender;
+    lastRender = now;
+    if (scene.resolution() !== 'native' || resolutionOverride) return;
+    if (hdQuality.frame(interval)) display.setNativeMaxWidth(hdQuality.maxWidth);
+  };
 
   const setScene = (next: Scene) => {
     scene = next;

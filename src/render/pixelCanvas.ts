@@ -82,6 +82,9 @@ export class PixelCanvas {
     ctx.globalCompositeOperation = 'destination-out';
     for (const light of lights) {
       if (light.r <= 0) continue;
+      // Lights off the screen cost a gradient each and change nothing.
+      const { x, y, r } = light;
+      if (x + r < 0 || y + r < 0 || x - r > shade.width || y - r > shade.height) continue;
       const g = ctx.createRadialGradient(
         light.x,
         light.y,
@@ -146,20 +149,52 @@ export class PixelCanvas {
     this.vline(x + w - 1, y, y + h - 1);
   }
 
-  /** Bresenham line, 1px wide. */
+  /**
+   * Bresenham line, 1px wide. Neighbouring pixels in a row (or a column) are filled as one
+   * rectangle: the same pixels, a fraction of the fill calls.
+   */
   line(x0: number, y0: number, x1: number, y1: number): void {
     let x = Math.round(x0);
     let y = Math.round(y0);
     const xe = Math.round(x1);
     const ye = Math.round(y1);
+    // Entirely off one side: nothing to draw.
+    if ((x < 0 && xe < 0) || (y < 0 && ye < 0)) return;
+    if ((x >= this.width && xe >= this.width) || (y >= this.height && ye >= this.height)) return;
     const dx = Math.abs(xe - x);
     const dy = -Math.abs(ye - y);
     const sx = x < xe ? 1 : -1;
     const sy = y < ye ? 1 : -1;
     let err = dx + dy;
+    // The run being collected: a horizontal or vertical strip of pixels.
+    let rx = x;
+    let ry = y;
+    let rw = 0;
+    let rh = 0;
+    const plot = (px: number, py: number) => {
+      if (rw === 0) {
+        rx = px;
+        ry = py;
+        rw = rh = 1;
+      } else if (rh === 1 && py === ry && (px === rx + rw || px === rx - 1)) {
+        rx = Math.min(rx, px);
+        rw++;
+      } else if (rw === 1 && px === rx && (py === ry + rh || py === ry - 1)) {
+        ry = Math.min(ry, py);
+        rh++;
+      } else {
+        this.ctx.fillRect(rx, ry, rw, rh);
+        rx = px;
+        ry = py;
+        rw = rh = 1;
+      }
+    };
     for (;;) {
-      this.ctx.fillRect(x, y, 1, 1);
-      if (x === xe && y === ye) break;
+      plot(x, y);
+      if (x === xe && y === ye) {
+        this.ctx.fillRect(rx, ry, rw, rh);
+        break;
+      }
       const e2 = 2 * err;
       if (e2 >= dy) {
         err += dy;

@@ -7,6 +7,7 @@ A browser platformer where you collect the features of video games themselves. T
 - `npm run dev`: dev server (http://localhost:5173). Press backquote (`) to open the debug overlay: toggle features, change resolution, reset the save.
 - `npm run check`: type-check + lint + tests. Run before calling anything done.
 - `npm run build`: production build to `dist/` (static, relative paths). Add `?debug` to the URL to get the overlay in production.
+- Deploy: every push to main runs `.github/workflows/deploy.yml` (check, build, publish to GitHub Pages at https://markl999.github.io/stick2hero/).
 - `?skipintro` in the URL goes straight past the tape loader. In dev, `window.__stick2hero` exposes `{ game, features, setScene, gameScene, scene, ending }` for the console and browser automation (`ending()` jumps straight to the ending). Beating the Deprecator saves `cleared`, after which the finale starts out done: use "reset save" to fight it again.
 
 ## Architecture rules

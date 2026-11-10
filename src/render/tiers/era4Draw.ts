@@ -35,12 +35,33 @@ function hash(n: number): number {
 
 // --- Sky and DEPTH ---------------------------------------------------------------------
 
+/** The sky's gradient, one pixel wide, made once per canvas height and stretched across. */
+let skyStrip: HTMLCanvasElement | null = null;
+function skyGradient(h: number): HTMLCanvasElement | null {
+  if (skyStrip?.height === h) return skyStrip;
+  const strip = document.createElement('canvas');
+  strip.width = 1;
+  strip.height = h;
+  const ctx = strip.getContext('2d');
+  if (!ctx) return null;
+  for (let y = 0; y < h; y++) {
+    ctx.fillStyle = mix('#060a1c', '#2b3d6e', Math.min(1, y / (h * 0.85)));
+    ctx.fillRect(0, y, 1, 1);
+  }
+  skyStrip = strip;
+  return strip;
+}
+
 export function drawNightSky(f: Frame, depthIntro: number | null): void {
   const { p, game, s } = f;
   const h = p.height;
-  for (let y = 0; y < h; y++) {
-    p.color(mix('#060a1c', '#2b3d6e', Math.min(1, y / (h * 0.85))));
-    p.rect(0, y, p.width, 1);
+  const strip = skyGradient(h);
+  if (strip) {
+    const ctx = p.context;
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(strip, 0, 0, p.width, h);
+    ctx.imageSmoothingEnabled = smooth;
   }
   // Stars, drifting very slightly.
   p.color('#dfe8ff');
@@ -59,16 +80,22 @@ export function drawNightSky(f: Frame, depthIntro: number | null): void {
   const city = game.level.era === 5;
   p.color('#1a2340');
   const step = Math.max(1, Math.round(s));
-  for (let x = 0; x < p.width; x += step) {
-    const wx = f.camX * 0.15 + x / s;
-    const block = Math.floor(wx / 26);
+  const skylineTop = (x: number) => {
+    const block = Math.floor((f.camX * 0.15 + x / s) / 26);
     const height = city
       ? 40 + hash(block + 9) * 70
       : hash(block) > 0.45
         ? 30 + hash(block + 9) * 50
         : 12 + hash(block + 3) * 10;
-    const top = Math.round(h * 0.78 - height * s);
-    p.rect(x, top, step, h - top);
+    return Math.round(h * 0.78 - height * s);
+  };
+  // One rectangle per building, not per column.
+  for (let x = 0; x < p.width; ) {
+    const top = skylineTop(x);
+    let end = x + step;
+    while (end < p.width && skylineTop(end) === top) end += step;
+    p.rect(x, top, end - x, h - top);
+    x = end;
   }
   if (city) {
     p.color('#ffcf6b');

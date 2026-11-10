@@ -16,7 +16,7 @@ export const RESOLUTIONS = {
   FULL_HD: { width: 1920, height: 1080 },
 } as const satisfies Record<string, Resolution>;
 
-/** HD draws at the screen's own resolution (up to this wide). */
+/** HD draws at the screen's own resolution (up to this wide, unless it's too slow). */
 const NATIVE_MAX_W = 1920;
 
 /** A scene asks for a fixed internal resolution, or 'native' (HD: whatever the screen is). */
@@ -40,6 +40,8 @@ export class Display {
   /** HD: smooth scaling (and any size), instead of crisp whole-number pixel scaling. */
   private smooth = false;
   private postFx: PostFxFilter | null = null;
+  /** HD's widest internal resolution; lowered if the machine can't keep up. */
+  private nativeMaxW = NATIVE_MAX_W;
 
   private constructor(
     private readonly app: Application,
@@ -100,7 +102,7 @@ export class Display {
     const dpr = this.app.renderer.resolution;
     const { width: W, height: H } = this.app.screen;
     const fitW = Math.min(W, (H * 16) / 9) * dpr;
-    const width = Math.max(320, Math.min(NATIVE_MAX_W, Math.round(fitW / 16) * 16));
+    const width = Math.max(320, Math.min(this.nativeMaxW, Math.round(fitW / 16) * 16));
     return { width, height: Math.round((width * 9) / 16) };
   }
 
@@ -129,6 +131,12 @@ export class Display {
   async capture(): Promise<Blob | null> {
     const canvas = this.app.renderer.extract.canvas({ target: this.screen }) as HTMLCanvasElement;
     return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
+  }
+
+  /** HD: cap the native resolution (the HD quality watcher lowers it on slow machines). */
+  setNativeMaxWidth(width: number): void {
+    this.nativeMaxW = width;
+    if (this.request === 'native') this.setResolution('native');
   }
 
   /** Call when the window size changes. */
